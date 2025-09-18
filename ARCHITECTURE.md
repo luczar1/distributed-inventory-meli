@@ -4,6 +4,26 @@
 
 This system implements a **consistency-first distributed inventory architecture** with comprehensive testing, observability, and fault tolerance. The system has been fully tested with **306 passing tests** and maintains strict code quality standards with all files under 200 LOC.
 
+### **Consistency > Availability Trade-offs**
+
+This system prioritizes **consistency over availability** following the CAP theorem:
+
+- **Consistency**: Strong consistency with optimistic concurrency control
+- **Partition Tolerance**: Handles network partitions with conflict detection
+- **Availability**: Sacrificed during high contention or system failures
+
+**Trade-off Benefits:**
+- No stale reads or inconsistent data
+- Version conflicts prevent data corruption
+- Predictable behavior under load
+- Strong audit trail with event sourcing
+
+**Trade-off Costs:**
+- Operations may be rejected during high contention
+- System may become unavailable during failures
+- Requires conflict resolution mechanisms
+- Higher latency due to version checking
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Distributed Architecture                     │
@@ -52,6 +72,233 @@ This system implements a **consistency-first distributed inventory architecture*
 │  │  │  │  SKU123: { A: 50, B: 30, C: 20, Total: 100 }│  │   │
 │  │  │  └─────────────────────────────────────────────┘  │   │
 │  │  └─────────────────────────────────────────────────────┘   │
+│  └─────────────────────────────────────────────────────────────┤
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Resilience Architecture
+
+### **Outbox/WAL (Write-Ahead Log) Pattern**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Event-First Architecture                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │   Store A   │    │   Store B   │    │   Store C   │         │
+│  │             │    │             │    │             │         │
+│  │ ┌─────────┐ │    │ ┌─────────┐ │    │ ┌─────────┐ │         │
+│  │ │Event    │ │    │ │Event    │ │    │ │Event    │ │         │
+│  │ │Log      │ │    │ │Log      │ │    │ │Log      │ │         │
+│  │ │(WAL)    │ │    │ │(WAL)    │ │    │ │(WAL)    │ │         │
+│  │ └─────────┘ │    │ └─────────┘ │    │ └─────────┘ │         │
+│  │      │      │    │      │      │    │      │      │         │
+│  │      ▼      │    │      ▼      │    │      ▼      │         │
+│  │ ┌─────────┐ │    │ ┌─────────┐ │    │ ┌─────────┐ │         │
+│  │ │Local    │ │    │ │Local    │ │    │ │Local    │ │         │
+│  │ │State    │ │    │ │State    │ │    │ │State    │ │         │
+│  │ └─────────┘ │    │ └─────────┘ │    │ └─────────┘ │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│           │                 │                 │                │
+│           └─────────────────┼─────────────────┘                │
+│                             │                                  │
+│  ┌─────────────────────────────────────────────────────────────┤
+│  │              Central Event Log (Outbox)                   │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │            Monotonic Event Sequence                 │   │
+│  │  │  [Seq1] → [Seq2] → [Seq3] → [Seq4] → ...           │   │
+│  │  │  • Atomic event append                             │   │
+│  │  │  • State mutation after event                      │   │
+│  │  │  • Crash recovery from events                      │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  └─────────────────────────────────────────────────────────────┤
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Snapshots & Log Compaction**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Snapshot Architecture                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┤
+│  │              Event Log with Snapshots                      │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │  [Event1] → [Event2] → [Event3] → [Event4] → ...  │   │
+│  │  │      ▲           ▲           ▲           ▲         │   │
+│  │  │   Snapshot    Snapshot    Snapshot    Snapshot    │   │
+│  │  │   Point 1     Point 2     Point 3     Point 4      │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  │                                                             │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │              Snapshot Storage                      │   │
+│  │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐  │   │
+│  │  │  │Snapshot │ │Snapshot │ │Snapshot │ │Snapshot │  │   │
+│  │  │  │   #1    │ │   #2    │ │   #3    │ │   #4    │  │   │
+│  │  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘  │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  │                                                             │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │              Compaction Process                     │   │
+│  │  │  • Create snapshot every N events                  │   │
+│  │  │  • Truncate events up to snapshot                  │   │
+│  │  │  • Replay from snapshot + tail events             │   │
+│  │  │  • Clean up old snapshots                          │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  └─────────────────────────────────────────────────────────────┤
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Circuit Breaker Pattern**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Circuit Breaker States                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │   CLOSED    │───▶│    OPEN     │───▶│ HALF-OPEN   │         │
+│  │             │    │             │    │             │         │
+│  │ • Normal    │    │ • Failing   │    │ • Testing   │         │
+│  │   operation │    │   fast      │    │   recovery  │         │
+│  │ • Count     │    │ • Reject    │    │ • Allow     │         │
+│  │   failures  │    │   requests  │    │   one probe │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│         ▲                   │                   │              │
+│         └───────────────────┼───────────────────┘              │
+│                             │                                  │
+│  ┌─────────────────────────────────────────────────────────────┤
+│  │              Circuit Breaker Types                         │
+│  │  • File System Breaker (disk I/O failures)                │
+│  │  • Sync Worker Breaker (event processing failures)        │
+│  │  • API Breaker (service failures)                         │
+│  │  • Network Breaker (external service failures)            │
+│  └─────────────────────────────────────────────────────────────┤
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Bulkheads (Resource Isolation)**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Bulkhead Architecture                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┤
+│  │              Resource Isolation                            │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐         │
+│  │  │   API       │ │   SYNC      │ │ FILESYSTEM  │         │
+│  │  │ Bulkhead    │ │ Bulkhead    │ │ Bulkhead    │         │
+│  │  │             │ │             │ │             │         │
+│  │  │ • Limit: 16 │ │ • Limit: 4  │ │ • Limit: 8  │         │
+│  │  │ • Queue:100│ │ • Queue: 50 │ │ • Queue:200 │         │
+│  │  │ • Isolated  │ │ • Isolated  │ │ • Isolated  │         │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘         │
+│  │                                                             │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │              Benefits                               │   │
+│  │  │  • API load doesn't affect sync operations         │   │
+│  │  │  • Sync failures don't block API requests          │   │
+│  │  │  • File system issues isolated from business logic │   │
+│  │  │  • Independent scaling and monitoring              │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  └─────────────────────────────────────────────────────────────┤
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Backpressure & Load Shedding**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Backpressure Architecture                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┤
+│  │              Token Bucket Rate Limiting                    │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │  ┌─────────┐    ┌─────────┐    ┌─────────┐        │   │
+│  │  │  │ Token   │    │ Token   │    │ Token   │        │   │
+│  │  │  │ Bucket  │───▶│ Bucket  │───▶│ Bucket  │        │   │
+│  │  │  │ (100/s) │    │ (200/s) │    │ (500/s) │        │   │
+│  │  │  └─────────┘    └─────────┘    └─────────┘        │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  │                                                             │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │              Load Shedding                           │   │
+│  │  │  ┌─────────────────────────────────────────────┐   │   │
+│  │  │  │  Queue Depth Monitoring                     │   │   │
+│  │  │  │  • Monitor bulkhead queue depths           │   │   │
+│  │  │  │  • Shed load when >80% capacity            │   │   │
+│  │  │  │  • Return 503 with Retry-After header     │   │   │
+│  │  │  │  • Preserve critical operations            │   │   │
+│  │  │  └─────────────────────────────────────────────┘   │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  └─────────────────────────────────────────────────────────────┤
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Dead Letter Queue (DLQ)**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Dead Letter Queue Architecture               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┤
+│  │              Event Processing with DLQ                     │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │  [Event1] → [Event2] → [Event3] → [Event4] → ...  │   │
+│  │  │      │           │           │           │         │   │
+│  │  │      ▼           ▼           ▼           ▼         │   │
+│  │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐  │   │
+│  │  │  │Process  │ │Process  │ │Process  │ │Process  │  │   │
+│  │  │  │Success  │ │Success  │ │Failure  │ │Success  │  │   │
+│  │  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘  │   │
+│  │  │      │           │           │           │         │   │
+│  │  │      │           │           ▼           │         │   │
+│  │  │      │           │    ┌─────────────┐   │         │   │
+│  │  │      │           │    │   Retry     │   │         │   │
+│  │  │      │           │    │   Logic     │   │         │   │
+│  │  │      │           │    └─────────────┘   │         │   │
+│  │  │      │           │           │           │         │   │
+│  │  │      │           │           ▼           │         │   │
+│  │  │      │           │    ┌─────────────┐   │         │   │
+│  │  │      │           │    │   DLQ      │   │         │   │
+│  │  │      │           │    │  Storage   │   │         │   │
+│  │  │      │           │    └─────────────┘   │         │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  │                                                             │
+│  │  ┌─────────────────────────────────────────────────────┐   │
+│  │  │              DLQ Benefits                           │   │
+│  │  │  • Failed events don't block processing             │   │
+│  │  │  • Manual inspection and retry                      │   │
+│  │  │  • Audit trail for problematic events              │   │
+│  │  │  • System continues operating normally              │   │
+│  │  └─────────────────────────────────────────────────────┘   │
+│  └─────────────────────────────────────────────────────────────┤
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Graceful Shutdown**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Graceful Shutdown Process                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┤
+│  │               Shutdown Sequence                            │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
+│  │  │   SIGTERM   │───▶│ Stop Accept │───▶│ Drain       │     │
+│  │  │   SIGINT    │    │ New Requests│    │ Bulkheads   │     │
+│  │  └─────────────┘    └─────────────┘    └─────────────┘     │
+│  │         │                   │                   │           │
+│  │         ▼                   ▼                   ▼           │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
+│  │  │ Stop Sync   │    │ Wait for    │    │ Final Sync  │     │
+│  │  │ Worker      │    │ In-Flight   │    │ Operation   │     │
+│  │  └─────────────┘    └─────────────┘    └─────────────┘     │
+│  │         │                   │                   │           │
+│  │         ▼                   ▼                   ▼           │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
+│  │  │ Flush Logs   │    │ Exit Code 0 │    │ No Data     │     │
+│  │  │              │    │             │    │ Loss       │     │
+│  │  └─────────────┘    └─────────────┘    └─────────────┘     │
 │  └─────────────────────────────────────────────────────────────┤
 └─────────────────────────────────────────────────────────────────┘
 ```

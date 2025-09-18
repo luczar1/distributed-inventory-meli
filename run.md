@@ -168,7 +168,7 @@ curl -X POST http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU12
 
 ### Version Conflict Testing
 
-#### Test Version Mismatch
+#### Test Version Mismatch (409 Conflict)
 ```bash
 # Get current version first
 curl http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU123
@@ -188,6 +188,117 @@ curl -X POST http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU12
 #     "statusCode": 409,
 #     "timestamp": "2025-09-18T17:16:49.647Z"
 #   }
+# }
+```
+
+#### Test If-Match Header Conflict (409 Conflict)
+```bash
+# Get current ETag
+curl -v http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU123
+
+# Try to adjust with stale ETag (should fail)
+curl -X POST http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU123/adjust \
+  -H "Content-Type: application/json" \
+  -H "If-Match: \"1\"" \
+  -d '{"delta": 10}'
+
+# Expected response (409 Conflict):
+# {
+#   "success": false,
+#   "error": {
+#     "name": "ConflictError",
+#     "message": "If-Match header mismatch. Expected: \"1\", Actual: \"4\"",
+#     "code": "CONFLICT_ERROR",
+#     "statusCode": 409,
+#     "timestamp": "2025-09-18T17:16:49.647Z"
+#   }
+# }
+```
+
+### Resilience Testing
+
+#### Test Rate Limiting (429 Too Many Requests)
+```bash
+# Make many requests quickly to trigger rate limiting
+for i in {1..150}; do
+  curl -X POST http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU123/adjust \
+    -H "Content-Type: application/json" \
+    -d '{"delta": 1}' &
+done
+wait
+
+# Check rate limit headers
+curl -v -X POST http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU123/adjust \
+  -H "Content-Type: application/json" \
+  -d '{"delta": 1}'
+
+# Expected response (429 Too Many Requests):
+# HTTP/1.1 429 Too Many Requests
+# X-RateLimit-Limit: 100
+# X-RateLimit-Remaining: 0
+# X-RateLimit-Reset: 1640995200
+# Retry-After: 60
+# {
+#   "success": false,
+#   "error": {
+#     "name": "RateLimitError",
+#     "message": "Rate limit exceeded",
+#     "code": "RATE_LIMIT_ERROR",
+#     "statusCode": 429,
+#     "timestamp": "2025-09-18T17:16:49.647Z"
+#   }
+# }
+```
+
+#### Test Load Shedding (503 Service Unavailable)
+```bash
+# Saturate bulkheads to trigger load shedding
+for i in {1..200}; do
+  curl -X POST http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU123/adjust \
+    -H "Content-Type: application/json" \
+    -d '{"delta": 1}' &
+done
+wait
+
+# Check load shedding response
+curl -v -X POST http://localhost:3000/api/inventory/stores/STORE001/inventory/SKU123/adjust \
+  -H "Content-Type: application/json" \
+  -d '{"delta": 1}'
+
+# Expected response (503 Service Unavailable):
+# HTTP/1.1 503 Service Unavailable
+# Retry-After: 30
+# {
+#   "success": false,
+#   "error": {
+#     "name": "LoadSheddingError",
+#     "message": "Service temporarily unavailable due to high load",
+#     "code": "LOAD_SHEDDING_ERROR",
+#     "statusCode": 503,
+#     "timestamp": "2025-09-18T17:16:49.647Z"
+#   }
+# }
+```
+
+#### Test Circuit Breaker (503 Service Unavailable)
+```bash
+# Simulate file system failures to open circuit breaker
+# (This would require fault injection in a real scenario)
+
+# Check circuit breaker status
+curl http://localhost:3000/api/health/readiness
+
+# Expected response when circuit breaker is open:
+# {
+#   "ready": false,
+#   "breakers": {
+#     "fileSystemBreaker": {
+#       "state": "open",
+#       "failures": 5,
+#       "threshold": 0.5
+#     }
+#   },
+#   "criticalBreakersOpen": true
 # }
 ```
 

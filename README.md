@@ -81,8 +81,11 @@ This system prioritizes **consistency over availability** because:
 
 ## API Endpoints
 
-### Health Check
-- `GET /api/health` - System health status with uptime and timestamp
+### Health & Monitoring
+- `GET /api/health` - Basic health check with uptime and timestamp
+- `GET /api/health/liveness` - Kubernetes liveness probe
+- `GET /api/health/readiness` - Kubernetes readiness probe with system health checks
+- `GET /api/health/metrics` - Comprehensive system metrics with circuit breakers and bulkheads
 
 ### Inventory Management
 - `GET /api/inventory/stores/:storeId/inventory/:sku` - Get inventory record with ETag
@@ -175,6 +178,39 @@ await perKeyMutex.acquire(sku, async () => {
 - **Concurrency**: Custom per-key async mutex
 - **Persistence**: JSON files (simulated database)
 - **Observability**: Custom metrics collection
+
+## Configuration
+
+### Environment Variables
+```bash
+# Server Configuration
+PORT=3000                          # Server port (default: 3000)
+NODE_ENV=production                 # Environment mode
+
+# Resilience Configuration
+CONCURRENCY_API=16                 # API bulkhead limit
+CONCURRENCY_SYNC=4                 # Sync bulkhead limit
+RATE_LIMIT_RPS=100                 # Rate limit requests per second
+RATE_LIMIT_BURST=200               # Rate limit burst capacity
+BREAKER_THRESHOLD=0.5              # Circuit breaker failure threshold
+BREAKER_COOLDOWN_MS=30000          # Circuit breaker cooldown (ms)
+RETRY_BASE_MS=1000                 # Retry base delay (ms)
+RETRY_TIMES=3                      # Maximum retry attempts
+SNAPSHOT_EVERY_N_EVENTS=100        # Snapshot frequency
+LOAD_SHED_QUEUE_MAX=1000           # Load shedding queue threshold
+IDEMP_TTL_MS=300000                # Idempotency TTL (5 minutes)
+
+# Logging Configuration
+LOG_LEVEL=info                     # Log level (debug, info, warn, error)
+```
+
+### Resilience Features
+- **Circuit Breakers**: File system, sync worker, and API breakers
+- **Bulkheads**: Resource isolation for API, sync, and file system operations
+- **Rate Limiting**: Token bucket algorithm with configurable RPS and burst
+- **Load Shedding**: Automatic load shedding when queues exceed thresholds
+- **Dead Letter Queue**: Failed events moved to DLQ for manual inspection
+- **Graceful Shutdown**: Drains bulkheads and runs final sync before exit
 
 ## Key Features
 
