@@ -5,22 +5,27 @@ import { apiBulkhead, syncBulkhead, fileSystemBulkhead } from './utils/bulkhead'
 import { getBulkheadMetrics } from './utils/bulkhead';
 
 const PORT = process.env['PORT'] || 3000;
+const isApiOnly = process.argv.includes('--api-only');
 let isShuttingDown = false;
 
 const server = app.listen(PORT, async () => {
-  logger.info(`Server running on port ${PORT}`);
+  logger.info(`Server running on port ${PORT}${isApiOnly ? ' (API only mode)' : ''}`);
   
-  // Replay event log on boot to ensure consistency
-  try {
-    await syncWorker.replayOnBoot();
-    logger.info('Event log replay completed');
-  } catch (error) {
-    logger.error({ error }, 'Failed to replay event log on boot');
+  if (!isApiOnly) {
+    // Replay event log on boot to ensure consistency
+    try {
+      await syncWorker.replayOnBoot();
+      logger.info('Event log replay completed');
+    } catch (error) {
+      logger.error({ error }, 'Failed to replay event log on boot');
+    }
+    
+    // Start sync worker with 15 second interval
+    syncWorker.startSync(15000);
+    logger.info('Sync worker started with 15 second interval');
+  } else {
+    logger.info('Running in API-only mode (sync worker disabled)');
   }
-  
-  // Start sync worker with 15 second interval
-  syncWorker.startSync(15000);
-  logger.info('Sync worker started with 15 second interval');
 });
 
 /**
@@ -41,21 +46,25 @@ async function gracefulShutdown(signal: string) {
       logger.info('Server stopped accepting new connections');
     });
 
-    // Stop sync worker
-    logger.info('Stopping sync worker...');
-    syncWorker.stopSync();
+    // Stop sync worker (if not in API-only mode)
+    if (!isApiOnly) {
+      logger.info('Stopping sync worker...');
+      syncWorker.stopSync();
+    }
 
     // Drain bulkheads and wait for in-flight operations
     logger.info('Draining bulkheads...');
     await drainBulkheads();
 
-    // Run one final sync to ensure no data is lost
-    logger.info('Running final sync...');
-    try {
-      await syncWorker.syncOnce();
-      logger.info('Final sync completed successfully');
-    } catch (error) {
-      logger.error({ error }, 'Final sync failed, but continuing shutdown');
+    // Run one final sync to ensure no data is lost (if not in API-only mode)
+    if (!isApiOnly) {
+      logger.info('Running final sync...');
+      try {
+        await syncWorker.syncOnce();
+        logger.info('Final sync completed successfully');
+      } catch (error) {
+        logger.error({ error }, 'Final sync failed, but continuing shutdown');
+      }
     }
 
     // Flush logs

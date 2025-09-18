@@ -8,18 +8,36 @@ npm install
 ```
 
 ### 2. Start the Server
+
+#### Option A: Full Server (API + Sync Worker)
 ```bash
 npm run dev
+```
+
+#### Option B: API Only (No Sync Worker)
+```bash
+npm run dev:api
+```
+
+#### Option C: Sync Worker Only (No API)
+```bash
+npm run dev:worker
+```
+
+#### Option D: Run Sync Worker Once (No Periodic Sync)
+```bash
+npm run dev:worker:once
 ```
 
 The server will start on `http://localhost:3000` with the following features:
 - ✅ Request logging with performance metrics and unique request IDs
 - ✅ Per-key async mutex for concurrency control
 - ✅ Idempotency support for all operations
-- ✅ Sync worker with 15-second interval
+- ✅ Sync worker with 15-second interval (when enabled)
 - ✅ Comprehensive metrics collection
 - ✅ 306 passing tests with full coverage
 - ✅ Clean code architecture (all files < 200 LOC)
+- ✅ **NEW**: Separate worker bootstrap for independent scaling
 
 ### 3. Run Tests
 ```bash
@@ -352,11 +370,65 @@ npm run format
 # Build TypeScript
 npm run build
 
-# Start production server
+# Start production server (full)
 npm start
+
+# Start API only in production
+npm run start:api
+
+# Start sync worker only in production
+npm run start:worker
+
+# Run sync worker once in production
+npm run start:worker:once
 
 # Run in production mode
 NODE_ENV=production npm start
+```
+
+## Deployment Options
+
+### Single Process Deployment
+```bash
+# Traditional single process (API + Worker)
+npm run dev
+```
+
+### Microservices Deployment
+```bash
+# Terminal 1: API Service
+npm run dev:api
+
+# Terminal 2: Sync Worker Service
+npm run dev:worker
+
+# Terminal 3: Additional Sync Workers (for scaling)
+npm run dev:worker
+```
+
+### Batch Processing
+```bash
+# Run sync worker once for batch processing
+npm run dev:worker:once
+
+# Or with custom interval
+tsx src/sync.bootstrap.ts 30000  # 30 second interval
+```
+
+### Production Deployment
+```bash
+# Build the application
+npm run build
+
+# Deploy API service
+npm run start:api
+
+# Deploy sync worker service
+npm run start:worker
+
+# Or run both in separate containers
+docker run -d --name api-service inventory-api
+docker run -d --name sync-worker inventory-worker
 ```
 
 ## Monitoring
