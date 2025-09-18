@@ -4,8 +4,16 @@ import { syncWorker } from './workers/sync.worker';
 
 const PORT = process.env['PORT'] || 3000;
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   logger.info(`Server running on port ${PORT}`);
+  
+  // Replay event log on boot to ensure consistency
+  try {
+    await syncWorker.replayOnBoot();
+    logger.info('Event log replay completed');
+  } catch (error) {
+    logger.error({ error }, 'Failed to replay event log on boot');
+  }
   
   // Start sync worker with 15 second interval
   syncWorker.startSync(15000);

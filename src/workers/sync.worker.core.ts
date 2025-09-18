@@ -4,6 +4,7 @@ import { eventLogRepository } from '../repositories/eventlog.repo';
 import { logger } from '../core/logger';
 import { CentralInventory, SyncState } from './sync.worker.types';
 import { EventProcessor } from './sync.worker.events';
+import { snapshotter } from '../ops/snapshotter';
 
 export class SyncWorker {
   private readonly dataDir = 'data';
@@ -104,12 +105,25 @@ export class SyncWorker {
       // Save updated central inventory
       await this.saveCentralInventory(centralInventory);
 
+      // Check if we should create a snapshot
+      const allEvents = await eventLogRepository.getAll();
+      const snapshot = await snapshotter.maybeSnapshot(allEvents, centralInventory);
+      
+      if (snapshot) {
+        // Compact event log after snapshot
+        await snapshotter.compactEventLog(snapshot.sequence);
+        
+        // Clean up old snapshots
+        await snapshotter.cleanupOldSnapshots(3);
+      }
+
       // Update last processed event ID
       this.state.lastProcessedEventId = newEvents[newEvents.length - 1].id;
 
       logger.info({ 
         processedCount: newEvents.length,
-        lastEventId: this.state.lastProcessedEventId 
+        lastEventId: this.state.lastProcessedEventId,
+        snapshotCreated: !!snapshot
       }, 'Events applied to central inventory');
 
     } catch (error) {
@@ -148,6 +162,54 @@ export class SyncWorker {
       isRunning: this.state.isRunning,
       lastProcessedEventId: this.state.lastProcessedEventId,
     };
+  }
+
+  /**
+   * Replay event log on boot to bring state to consistency
+   */
+  async replayOnBoot(): Promise<void> {
+    try {
+      logger.info('Starting event log replay on boot');
+      
+      // Get all events from the log
+      const events = await eventLogRepository.getAll();
+      
+      if (events.length === 0) {
+        logger.info('No events to replay');
+        // Still ensure central inventory is initialized
+        const centralInventory = await this.loadCentralInventory();
+        await this.saveCentralInventory(centralInventory);
+        return;
+      }
+
+      // Sort events by sequence to ensure correct order
+      const sortedEvents = events.sort((a, b) => a.sequence - b.sequence);
+      
+      logger.info({ eventCount: sortedEvents.length }, 'Replaying events from log');
+
+      // Load current central inventory
+      const centralInventory = await this.loadCentralInventory();
+
+      // Apply all events to central inventory
+      for (const event of sortedEvents) {
+        await this.eventProcessor.applyEventToCentral(centralInventory, event);
+      }
+
+      // Save updated central inventory
+      await this.saveCentralInventory(centralInventory);
+
+      // Update last processed event ID
+      this.state.lastProcessedEventId = sortedEvents[sortedEvents.length - 1].id;
+
+      logger.info({ 
+        replayedCount: sortedEvents.length,
+        lastEventId: this.state.lastProcessedEventId 
+      }, 'Event log replay completed successfully');
+
+    } catch (error) {
+      logger.error({ error }, 'Failed to replay event log on boot');
+      throw error;
+    }
   }
 
   /**

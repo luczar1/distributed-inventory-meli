@@ -8,12 +8,14 @@ export interface Event {
   type: string;
   payload: Record<string, unknown>;
   ts: number;
+  sequence: number;
 }
 
 // Event log data structure
 interface EventLogData {
   events: Event[];
   lastId?: string;
+  lastSequence?: number;
 }
 
 export class EventLogRepository {
@@ -38,11 +40,17 @@ export class EventLogRepository {
         return;
       }
       
+      // Assign sequence number if not provided
+      if (event.sequence === undefined) {
+        event.sequence = (data.lastSequence || 0) + 1;
+      }
+      
       data.events.push(event);
       data.lastId = event.id;
+      data.lastSequence = event.sequence;
       
       await this.saveData(data);
-      logger.info({ eventId: event.id, type: event.type }, 'Event appended to log');
+      logger.info({ eventId: event.id, type: event.type, sequence: event.sequence }, 'Event appended to log');
     } catch (error) {
       logger.error({ error, event }, 'Failed to append event');
       throw new Error(`Failed to append event ${event.id}`);

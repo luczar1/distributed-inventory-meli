@@ -73,10 +73,7 @@ export class StockAdjustmentService {
         updatedAt: new Date(),
       };
 
-      // Persist changes
-      await inventoryRepository.upsert(updatedRecord);
-
-      // Log event
+      // OUTBOX PATTERN: Log event FIRST, then persist state
       const event: Event = {
         id: uuidv4(),
         type: 'stock_adjusted',
@@ -90,8 +87,12 @@ export class StockAdjustmentService {
           newVersion: updatedRecord.version,
         },
         ts: Date.now(),
+        sequence: 0, // Will be assigned by event log
       };
       await eventLogRepository.append(event);
+
+      // Persist changes AFTER event is logged
+      await inventoryRepository.upsert(updatedRecord);
 
       const result: StockAdjustmentResult = {
         qty: newQty,
