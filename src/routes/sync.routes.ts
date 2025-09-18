@@ -1,21 +1,19 @@
 import { Router, NextFunction, Request, Response } from 'express';
 import { logger } from '../core/logger';
-import { SyncWorker } from '../workers/sync.worker';
+import { syncWorker } from '../workers/sync.worker';
 import { incrementSyncOperations } from '../utils/metrics';
 
 const router = Router();
 
-// Create sync worker instance for routes
-const syncWorker = new SyncWorker();
+// Get sync worker instance (can be mocked in tests)
+const getSyncWorker = () => syncWorker;
 
 // POST /sync - Manual sync trigger
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     logger.info({ req: { id: req.id } }, 'Manual sync requested');
     
-    // For now, just simulate a successful sync
-    // TODO: Implement actual sync logic
-    await new Promise(resolve => setTimeout(resolve, 100)); // Simulate async work
+    await getSyncWorker().syncOnce();
     
     // Increment metrics
     incrementSyncOperations();
@@ -32,7 +30,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
 // GET /sync/status - Get sync worker status
 router.get('/status', (req: Request, res: Response) => {
-  const status = syncWorker.getStatus();
+  const status = getSyncWorker().getStatus();
   res.json({
     success: true,
     data: status
@@ -43,7 +41,7 @@ router.get('/status', (req: Request, res: Response) => {
 router.post('/start', (req: Request, res: Response) => {
   const { intervalMs = 15000 } = req.body;
   
-  syncWorker.startSync(intervalMs);
+  getSyncWorker().startSync(intervalMs);
   
   res.json({
     success: true,
@@ -53,7 +51,7 @@ router.post('/start', (req: Request, res: Response) => {
 
 // POST /sync/stop - Stop periodic sync
 router.post('/stop', (req: Request, res: Response) => {
-  syncWorker.stopSync();
+  getSyncWorker().stopSync();
   
   res.json({
     success: true,

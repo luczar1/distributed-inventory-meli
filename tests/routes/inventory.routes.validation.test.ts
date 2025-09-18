@@ -30,7 +30,7 @@ describe('Inventory Routes - Validation', () => {
 
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('VALIDATION_ERROR');
-      expect(response.body.error.message).toContain('Missing required fields');
+      expect(response.body.error.message).toContain('Validation failed');
     });
 
     it('should return 400 for missing storeId', async () => {
@@ -46,7 +46,7 @@ describe('Inventory Routes - Validation', () => {
 
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('VALIDATION_ERROR');
-      expect(response.body.error.message).toContain('Missing required fields');
+      expect(response.body.error.message).toContain('Validation failed');
     });
 
     it('should return 400 for missing initialQuantity', async () => {
@@ -62,7 +62,7 @@ describe('Inventory Routes - Validation', () => {
 
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('VALIDATION_ERROR');
-      expect(response.body.error.message).toContain('Missing required fields');
+      expect(response.body.error.message).toContain('Validation failed');
     });
 
     it('should return 400 for undefined initialQuantity', async () => {
@@ -79,7 +79,7 @@ describe('Inventory Routes - Validation', () => {
 
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('VALIDATION_ERROR');
-      expect(response.body.error.message).toContain('Missing required fields');
+      expect(response.body.error.message).toContain('Validation failed');
     });
 
     it('should return 400 for empty sku', async () => {

@@ -1,9 +1,8 @@
 import { Router, NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { logger } from '../core/logger';
-// import { ValidationError } from '../core/errors'; // Not used in this file
-// import { inventoryService } from '../services/inventory.service'; // Not used in this file
-// import { syncWorker } from '../workers/sync.worker'; // Not used in this file
+import { inventoryService } from '../services/inventory.service';
+import { inventoryRepository } from '../repositories/inventory.repo';
 import { validateBody, validateParams } from '../middleware/validate';
 import { incrementGetInventory } from '../utils/metrics';
 
@@ -91,25 +90,19 @@ router.post('/',
 );
 
 // GET /stores/:storeId/inventory/:sku
-router.get('/stores/:storeId/inventory/:sku', 
+router.get('/stores/:storeId/inventory/:sku',
   validateParams(StoreParamsSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { sku, storeId } = req.params;
       logger.info({ req: { id: req.id }, sku, storeId }, 'Get inventory requested');
-      
-      // Mock response for now - will be replaced with actual service call
-      const record = {
-        sku,
-        storeId,
-        qty: 100,
-        version: 1,
-        updatedAt: new Date(),
-      };
-      
+
+      // Get inventory record from repository
+      const record = await inventoryRepository.get(sku, storeId);
+
       // Increment metrics
       incrementGetInventory();
-      
+
       // Set ETag header with version
       res.set('ETag', `"${record.version}"`);
       res.json(record);
@@ -128,31 +121,36 @@ router.post('/stores/:storeId/inventory/:sku/adjust',
       const { sku, storeId } = req.params;
       const { delta, expectedVersion } = req.body;
       const idempotencyKey = req.headers['idempotency-key'] as string;
-      
-      logger.info({ 
-        req: { id: req.id }, 
-        sku, 
-        storeId, 
-        delta, 
+
+      logger.info({
+        req: { id: req.id },
+        sku,
+        storeId,
+        delta,
         expectedVersion,
-        idempotencyKey 
+        idempotencyKey
       }, 'Adjust stock requested');
-      
-      // Mock response for now - will be replaced with actual service call
-      const result = {
+
+      // Call the actual service
+      const result = await inventoryService.adjustStock(storeId, sku, delta, expectedVersion, idempotencyKey);
+
+      // Get the updated record for the response
+      const record = await inventoryRepository.get(sku, storeId);
+
+      const response = {
         success: true,
-        newQuantity: 100 + delta,
-        newVersion: 2,
+        newQuantity: result.qty,
+        newVersion: result.version,
         record: {
           sku,
           storeId,
-          qty: 100 + delta,
-          version: 2,
-          updatedAt: new Date(),
+          qty: result.qty,
+          version: result.version,
+          updatedAt: record.updatedAt,
         },
       };
-      
-      res.json(result);
+
+      res.json(response);
     } catch (error) {
       next(error);
     }
@@ -168,31 +166,36 @@ router.post('/stores/:storeId/inventory/:sku/reserve',
       const { sku, storeId } = req.params;
       const { qty, expectedVersion } = req.body;
       const idempotencyKey = req.headers['idempotency-key'] as string;
-      
-      logger.info({ 
-        req: { id: req.id }, 
-        sku, 
-        storeId, 
-        qty, 
+
+      logger.info({
+        req: { id: req.id },
+        sku,
+        storeId,
+        qty,
         expectedVersion,
-        idempotencyKey 
+        idempotencyKey
       }, 'Reserve stock requested');
-      
-      // Mock response for now - will be replaced with actual service call
-      const result = {
+
+      // Call the actual service
+      const result = await inventoryService.reserveStock(storeId, sku, qty, expectedVersion, idempotencyKey);
+
+      // Get the updated record for the response
+      const record = await inventoryRepository.get(sku, storeId);
+
+      const response = {
         success: true,
-        newQuantity: 100 - qty,
-        newVersion: 2,
+        newQuantity: result.qty,
+        newVersion: result.version,
         record: {
           sku,
           storeId,
-          qty: 100 - qty,
-          version: 2,
-          updatedAt: new Date(),
+          qty: result.qty,
+          version: result.version,
+          updatedAt: record.updatedAt,
         },
       };
-      
-      res.json(result);
+
+      res.json(response);
     } catch (error) {
       next(error);
     }

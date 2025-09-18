@@ -4,12 +4,12 @@ import { app } from '../../src/app';
 
 // Mock the sync worker
 vi.mock('../../src/workers/sync.worker', () => ({
-  SyncWorker: vi.fn().mockImplementation(() => ({
+  syncWorker: {
     syncOnce: vi.fn(),
     getStatus: vi.fn(),
     startSync: vi.fn(),
     stopSync: vi.fn(),
-  })),
+  },
 }));
 
 describe('Sync Routes API', () => {
@@ -18,8 +18,8 @@ describe('Sync Routes API', () => {
 
   beforeAll(async () => {
     server = app;
-    const { SyncWorker } = await import('../../src/workers/sync.worker');
-    mockSyncWorker = new SyncWorker();
+    const { syncWorker } = await import('../../src/workers/sync.worker');
+    mockSyncWorker = syncWorker;
   });
 
   afterAll(() => {

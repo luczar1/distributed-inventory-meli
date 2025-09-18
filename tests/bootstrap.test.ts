@@ -1,6 +1,62 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app';
+import { InventoryRecord } from '../src/core/types';
+
+// Mock repositories
+vi.mock('../src/repositories/inventory.repo', () => ({
+  inventoryRepository: {
+    get: vi.fn().mockImplementation((sku: string, storeId: string) => {
+      return Promise.resolve({
+        sku,
+        storeId,
+        qty: 100,
+        version: 1,
+        updatedAt: new Date()
+      } as InventoryRecord);
+    }),
+    upsert: vi.fn().mockResolvedValue(undefined),
+    listByStore: vi.fn().mockResolvedValue([]),
+  },
+}));
+
+vi.mock('../src/repositories/eventlog.repo', () => ({
+  eventLogRepository: {
+    append: vi.fn().mockResolvedValue(undefined),
+    getEvents: vi.fn().mockResolvedValue([]),
+    getEventsAfter: vi.fn().mockResolvedValue([]),
+  },
+}));
+
+// Mock services
+vi.mock('../src/services/inventory.service', () => ({
+  inventoryService: {
+    adjustStock: vi.fn().mockImplementation(async (storeId: string, sku: string, delta: number) => {
+      return { qty: 100 + delta, version: 2 };
+    }),
+    reserveStock: vi.fn().mockImplementation(async (storeId: string, sku: string, qty: number) => {
+      return { qty: 100 - qty, version: 2 };
+    }),
+  },
+}));
+
+// Mock utilities
+vi.mock('../src/utils/idempotency', () => ({
+  idempotencyStore: {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue(undefined),
+    clear: vi.fn(),
+  },
+}));
+
+vi.mock('../src/utils/perKeyMutex', () => ({
+  perKeyMutex: {
+    acquire: vi.fn().mockImplementation(async (key: string, fn: () => Promise<unknown>) => {
+      return await fn();
+    }),
+    clear: vi.fn(),
+  },
+}));
 
 // Mock the sync worker
 vi.mock('../src/workers/sync.worker', () => ({
@@ -11,6 +67,12 @@ vi.mock('../src/workers/sync.worker', () => ({
     getStatus: vi.fn().mockReturnValue({ isRunning: false }),
     resetState: vi.fn(),
   })),
+  syncWorker: {
+    startSync: vi.fn(),
+    stopSync: vi.fn(),
+    syncOnce: vi.fn().mockResolvedValue(undefined),
+    getStatus: vi.fn().mockReturnValue({ isRunning: false }),
+  },
 }));
 
 describe('Bootstrap Integration', () => {

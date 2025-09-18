@@ -1,11 +1,8 @@
 import { app } from './app';
 import { logger } from './core/logger';
-import { SyncWorker } from './workers/sync.worker';
+import { syncWorker } from './workers/sync.worker';
 
 const PORT = process.env['PORT'] || 3000;
-
-// Create sync worker instance
-const syncWorker = new SyncWorker();
 
 const server = app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);

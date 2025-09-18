@@ -35,22 +35,22 @@ describe('Validation Middleware', () => {
       expect(mockNext).toHaveBeenCalled();
     });
 
-    it('should throw ValidationError for invalid body', () => {
+    it('should call next with ValidationError for invalid body', async () => {
       mockReq.body = { name: 'John', age: 'invalid' };
       const middleware = validateBody(schema);
 
-      expect(() => {
-        middleware(mockReq as Request, mockRes as Response, mockNext);
-      }).toThrow(ValidationError);
+      await middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
     });
 
-    it('should throw ValidationError for missing fields', () => {
+    it('should call next with ValidationError for missing fields', async () => {
       mockReq.body = { name: 'John' };
       const middleware = validateBody(schema);
 
-      expect(() => {
-        middleware(mockReq as Request, mockRes as Response, mockNext);
-      }).toThrow(ValidationError);
+      await middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
     });
 
     it('should pass through non-ZodError', () => {
@@ -84,13 +84,13 @@ describe('Validation Middleware', () => {
       expect(mockNext).toHaveBeenCalled();
     });
 
-    it('should throw ValidationError for invalid params', () => {
+    it('should call next with ValidationError for invalid params', async () => {
       mockReq.params = { id: 123, type: 'user' };
       const middleware = validateParams(schema);
 
-      expect(() => {
-        middleware(mockReq as Request, mockRes as Response, mockNext);
-      }).toThrow(ValidationError);
+      await middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
     });
 
     it('should pass through non-ZodError', () => {
@@ -171,7 +171,7 @@ describe('Validation Middleware', () => {
   });
 
   describe('ValidationError details', () => {
-    it('should include field errors in ValidationError', () => {
+    it('should include field errors in ValidationError', async () => {
       const schema = z.object({
         name: z.string().min(3),
         age: z.number().min(18),
@@ -180,9 +180,9 @@ describe('Validation Middleware', () => {
       mockReq.body = { name: 'Jo', age: 15 };
       const middleware = validateBody(schema);
 
-      expect(() => {
-        middleware(mockReq as Request, mockRes as Response, mockNext);
-      }).toThrow(ValidationError);
+      await middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 });

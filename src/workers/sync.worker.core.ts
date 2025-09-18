@@ -160,3 +160,6 @@ export class SyncWorker {
     logger.info('Sync worker state reset');
   }
 }
+
+// Singleton instance
+export const syncWorker = new SyncWorker();
