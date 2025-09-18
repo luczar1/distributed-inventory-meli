@@ -4,13 +4,13 @@ import { app } from '../src/app';
 
 // Mock the sync worker
 vi.mock('../src/workers/sync.worker', () => ({
-  syncWorker: {
+  SyncWorker: vi.fn().mockImplementation(() => ({
     startSync: vi.fn(),
     stopSync: vi.fn(),
     syncOnce: vi.fn().mockResolvedValue(undefined),
     getStatus: vi.fn().mockReturnValue({ isRunning: false }),
     resetState: vi.fn(),
-  },
+  })),
 }));
 
 describe('Bootstrap Integration', () => {
@@ -19,8 +19,8 @@ describe('Bootstrap Integration', () => {
 
   beforeAll(async () => {
     server = app;
-    const { syncWorker } = await import('../src/workers/sync.worker');
-    mockSyncWorker = syncWorker;
+    const { SyncWorker } = await import('../src/workers/sync.worker');
+    mockSyncWorker = new SyncWorker();
   });
 
   afterAll(() => {
@@ -36,7 +36,14 @@ describe('Bootstrap Integration', () => {
         .get('/api/health')
         .expect(200);
 
-      expect(response.body).toEqual({ status: 'ok' });
+      expect(response.body).toEqual({
+        success: true,
+        data: {
+          status: 'healthy',
+          timestamp: expect.any(String),
+          uptime: expect.any(Number),
+        }
+      });
     });
 
     it('should include request ID in headers', async () => {
