@@ -29,4 +29,13 @@ export interface ResilienceConfig {
   
   // Logging
   LOG_LEVEL: string;
+  
+  // Lock configuration
+  LOCKS_ENABLED: boolean;
+  LOCK_TTL_MS: number;
+  LOCK_RENEW_MS: number;
+  LOCK_DIR: string;
+  LOCK_REJECT_STATUS: number;
+  LOCK_RETRY_AFTER_MS: number;
+  LOCK_OWNER_ID: string;
 }

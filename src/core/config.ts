@@ -4,6 +4,7 @@ import {
   parseNonNegativeInt, 
   parseNonNegativeFloat 
 } from './config.utils';
+import { randomUUID } from 'crypto';
 
 export const config: ResilienceConfig = Object.freeze({
   // Concurrency limits
@@ -36,6 +37,15 @@ export const config: ResilienceConfig = Object.freeze({
   
   // Logging
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  
+  // Lock configuration
+  LOCKS_ENABLED: process.env.LOCKS_ENABLED === 'true',
+  LOCK_TTL_MS: parsePositiveInt('LOCK_TTL_MS', 2000),
+  LOCK_RENEW_MS: parsePositiveInt('LOCK_RENEW_MS', 1000),
+  LOCK_DIR: process.env.LOCK_DIR || 'data/locks',
+  LOCK_REJECT_STATUS: parsePositiveInt('LOCK_REJECT_STATUS', 503),
+  LOCK_RETRY_AFTER_MS: parsePositiveInt('LOCK_RETRY_AFTER_MS', 300),
+  LOCK_OWNER_ID: `${process.pid}-${randomUUID()}`,
 });
 
 export function getConfigValue<K extends keyof ResilienceConfig>(key: K): ResilienceConfig[K] {
