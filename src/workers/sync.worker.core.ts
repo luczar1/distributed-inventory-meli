@@ -78,7 +78,7 @@ export class SyncWorker {
   }
 
   /**
-   * Apply new events to central inventory
+   * Apply new events to central inventory with retry logic and dead-letter handling
    */
   private async applyEventsToCentral(): Promise<void> {
     try {
@@ -103,34 +103,62 @@ export class SyncWorker {
       // Load current central inventory
       const centralInventory = await this.loadCentralInventory();
 
-      // Apply events to central inventory
+      // Process events with retry logic
+      const processedEvents: string[] = [];
+      const failedEvents: string[] = [];
+
       for (const event of newEvents) {
-        await this.eventProcessor.applyEventToCentral(centralInventory, event);
+        try {
+          await this.eventProcessor.applyEventToCentral(centralInventory, event);
+          processedEvents.push(event.id);
+          logger.debug({ eventId: event.id }, 'Event processed successfully');
+        } catch (error) {
+          logger.warn({ eventId: event.id, error }, 'Event processing failed');
+          failedEvents.push(event.id);
+          
+          // Record failure in event log
+          await eventLogRepository.recordFailure(event.id, (error as Error).message);
+        }
       }
 
-      // Save updated central inventory
-      await this.saveCentralInventory(centralInventory);
+      // Handle failed events - move to dead letter queue if max retries exceeded
+      const maxRetries = 3;
+      for (const eventId of failedEvents) {
+        const event = events.find(e => e.id === eventId);
+        if (event && (event.retryCount || 0) >= maxRetries) {
+          logger.error({ eventId, retryCount: event.retryCount }, 'Moving event to dead letter queue');
+          await eventLogRepository.moveToDeadLetter(eventId, `Max retries (${maxRetries}) exceeded`);
+        }
+      }
 
-      // Check if we should create a snapshot
-      const allEvents = await eventLogRepository.getAll();
-      const snapshot = await snapshotter.maybeSnapshot(allEvents, centralInventory);
-      
-      if (snapshot) {
-        // Compact event log after snapshot
-        await snapshotter.compactEventLog(snapshot.sequence);
+      // Save updated central inventory only if we have processed events
+      if (processedEvents.length > 0) {
+        await this.saveCentralInventory(centralInventory);
+
+        // Check if we should create a snapshot
+        const allEvents = await eventLogRepository.getAll();
+        const snapshot = await snapshotter.maybeSnapshot(allEvents, centralInventory);
         
-        // Clean up old snapshots
-        await snapshotter.cleanupOldSnapshots(3);
+        if (snapshot) {
+          // Compact event log after snapshot
+          await snapshotter.compactEventLog(snapshot.sequence);
+          
+          // Clean up old snapshots
+          await snapshotter.cleanupOldSnapshots(3);
+        }
+
+        // Update last processed event ID
+        this.state.lastProcessedEventId = newEvents[newEvents.length - 1].id;
+
+        logger.info({ 
+          processedCount: processedEvents.length,
+          failedCount: failedEvents.length,
+          lastEventId: this.state.lastProcessedEventId,
+          snapshotCreated: !!snapshot
+        }, 'Events applied to central inventory');
+      } else {
+        logger.warn({ failedCount: failedEvents.length }, 'No events were successfully processed');
       }
-
-      // Update last processed event ID
-      this.state.lastProcessedEventId = newEvents[newEvents.length - 1].id;
-
-      logger.info({ 
-        processedCount: newEvents.length,
-        lastEventId: this.state.lastProcessedEventId,
-        snapshotCreated: !!snapshot
-      }, 'Events applied to central inventory');
 
     } catch (error) {
       logger.error({ error }, 'Failed to apply events to central inventory');

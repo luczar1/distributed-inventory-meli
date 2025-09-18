@@ -8,6 +8,10 @@ interface Metrics {
   reserveStock: number;
   getInventory: number;
   syncOperations: number;
+  rateLimitHits: number;
+  loadSheddingRejections: number;
+  fileSystemRetries: number;
+  snapshotsCreated: number;
 }
 
 class MetricsCollector {
@@ -20,6 +24,10 @@ class MetricsCollector {
     reserveStock: 0,
     getInventory: 0,
     syncOperations: 0,
+    rateLimitHits: 0,
+    loadSheddingRejections: 0,
+    fileSystemRetries: 0,
+    snapshotsCreated: 0,
   };
 
   // Increment a specific metric
@@ -43,6 +51,10 @@ class MetricsCollector {
       reserveStock: 0,
       getInventory: 0,
       syncOperations: 0,
+      rateLimitHits: 0,
+      loadSheddingRejections: 0,
+      fileSystemRetries: 0,
+      snapshotsCreated: 0,
     };
   }
 
@@ -64,3 +76,7 @@ export const incrementAdjustStock = () => metrics.increment('adjustStock');
 export const incrementReserveStock = () => metrics.increment('reserveStock');
 export const incrementGetInventory = () => metrics.increment('getInventory');
 export const incrementSyncOperations = () => metrics.increment('syncOperations');
+export const incrementRateLimitHits = () => metrics.increment('rateLimitHits');
+export const incrementLoadSheddingRejections = () => metrics.increment('loadSheddingRejections');
+export const incrementFileSystemRetries = () => metrics.increment('fileSystemRetries');
+export const incrementSnapshotsCreated = () => metrics.increment('snapshotsCreated');

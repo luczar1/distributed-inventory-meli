@@ -9,6 +9,17 @@ export interface Event {
   payload: Record<string, unknown>;
   ts: number;
   sequence: number;
+  retryCount?: number;
+  lastFailureTs?: number;
+  failureReason?: string;
+}
+
+// Dead letter event structure
+export interface DeadLetterEvent {
+  originalEvent: Event;
+  dlqTs: number;
+  finalFailureReason: string;
+  totalRetries: number;
 }
 
 // Event log data structure
@@ -183,6 +194,119 @@ export class EventLogRepository {
     } catch (error) {
       logger.error({ error, id }, 'Failed to get event by ID');
       throw new Error(`Failed to get event by ID ${id}`);
+    }
+  }
+
+  /**
+   * Record a failure for an event
+   */
+  async recordFailure(eventId: string, reason: string): Promise<void> {
+    try {
+      const data = await this.loadData();
+      const event = data.events.find(e => e.id === eventId);
+      if (event) {
+        event.retryCount = (event.retryCount || 0) + 1;
+        event.lastFailureTs = Date.now();
+        event.failureReason = reason;
+        await this.saveData(data);
+        logger.warn({ eventId, retryCount: event.retryCount, reason }, 'Event failure recorded');
+      }
+    } catch (error) {
+      logger.error({ error, eventId, reason }, 'Failed to record event failure');
+      throw new Error(`Failed to record failure for event ${eventId}`);
+    }
+  }
+
+  /**
+   * Get events that have failed and need retry
+   */
+  async getFailedEvents(maxRetries: number = 3): Promise<Event[]> {
+    try {
+      const data = await this.loadData();
+      return data.events.filter(event => 
+        event.retryCount !== undefined && 
+        event.retryCount > 0 && 
+        event.retryCount < maxRetries
+      );
+    } catch (error) {
+      logger.error({ error, maxRetries }, 'Failed to get failed events');
+      throw new Error('Failed to get failed events');
+    }
+  }
+
+  /**
+   * Move event to dead letter queue
+   */
+  async moveToDeadLetter(eventId: string, finalReason: string): Promise<void> {
+    try {
+      const data = await this.loadData();
+      const eventIndex = data.events.findIndex(e => e.id === eventId);
+      if (eventIndex === -1) {
+        throw new Error(`Event ${eventId} not found`);
+      }
+
+      const event = data.events[eventIndex];
+      const deadLetterEvent: DeadLetterEvent = {
+        originalEvent: event,
+        dlqTs: Date.now(),
+        finalFailureReason: finalReason,
+        totalRetries: event.retryCount || 0
+      };
+
+      // Remove from main log
+      data.events.splice(eventIndex, 1);
+      await this.saveData(data);
+
+      // Append to dead letter queue
+      await this.appendToDeadLetter(deadLetterEvent);
+      
+      logger.error({ eventId, totalRetries: deadLetterEvent.totalRetries, finalReason }, 'Event moved to dead letter queue');
+    } catch (error) {
+      logger.error({ error, eventId, finalReason }, 'Failed to move event to dead letter queue');
+      throw new Error(`Failed to move event ${eventId} to dead letter queue`);
+    }
+  }
+
+  /**
+   * Append event to dead letter queue
+   */
+  private async appendToDeadLetter(deadLetterEvent: DeadLetterEvent): Promise<void> {
+    try {
+      const dlqPath = join(this.dataDir, 'dead-letter.json');
+      const existingData = await readJsonFile<DeadLetterEvent[]>(dlqPath) || [];
+      existingData.push(deadLetterEvent);
+      await writeJsonFile(dlqPath, existingData);
+      logger.info({ eventId: deadLetterEvent.originalEvent.id }, 'Event appended to dead letter queue');
+    } catch (error) {
+      logger.error({ error, deadLetterEvent }, 'Failed to append to dead letter queue');
+      throw new Error('Failed to append to dead letter queue');
+    }
+  }
+
+  /**
+   * Get dead letter events
+   */
+  async getDeadLetterEvents(): Promise<DeadLetterEvent[]> {
+    try {
+      const dlqPath = join(this.dataDir, 'dead-letter.json');
+      return await readJsonFile<DeadLetterEvent[]>(dlqPath) || [];
+    } catch (error) {
+      logger.error({ error }, 'Failed to get dead letter events');
+      throw new Error('Failed to get dead letter events');
+    }
+  }
+
+  /**
+   * Clear dead letter queue
+   */
+  async clearDeadLetterQueue(): Promise<void> {
+    try {
+      const dlqPath = join(this.dataDir, 'dead-letter.json');
+      await writeJsonFile(dlqPath, []);
+      logger.info('Dead letter queue cleared');
+    } catch (error) {
+      logger.error({ error }, 'Failed to clear dead letter queue');
+      throw new Error('Failed to clear dead letter queue');
     }
   }
 }

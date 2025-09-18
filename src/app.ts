@@ -2,6 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import { errorHandler } from './middleware/error-handler';
 import { requestIdMiddleware } from './middleware/request-id';
 import { requestLoggerMiddleware } from './middleware/request-logger';
+import { rateLimitMiddleware } from './middleware/rateLimiter';
+import { loadSheddingMiddleware } from './middleware/loadShedding';
 import { healthRoutes } from './routes/health.routes';
 import { inventoryRoutes } from './routes/inventory.routes';
 import { syncRoutes } from './routes/sync.routes';
@@ -34,9 +36,11 @@ app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
 
 // Routes
 app.use('/api/health', healthRoutes);
-app.use('/api/inventory', inventoryRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/metrics', metricsRoutes);
+
+// Apply rate limiting and load shedding to mutation routes only
+app.use('/api/inventory', rateLimitMiddleware, loadSheddingMiddleware, inventoryRoutes);
 
 // 404 handler for unknown routes
 app.use('*', (req: Request, res: Response) => {
