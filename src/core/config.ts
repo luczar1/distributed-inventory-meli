@@ -133,7 +133,7 @@ export function getConfigSummary(): Record<string, unknown> {
       api: config.CONCURRENCY_API,
       sync: config.CONCURRENCY_SYNC,
     },
-    rateLimiting: {
+    rateLimit: {
       rps: config.RATE_LIMIT_RPS,
       burst: config.RATE_LIMIT_BURST,
     },
@@ -145,8 +145,8 @@ export function getConfigSummary(): Record<string, unknown> {
       baseMs: config.RETRY_BASE_MS,
       times: config.RETRY_TIMES,
     },
-    snapshot: {
-      everyNEvents: config.SNAPSHOT_EVERY_N_EVENTS,
+    events: {
+      snapshotEvery: config.SNAPSHOT_EVERY_N_EVENTS,
     },
     loadShedding: {
       queueMax: config.LOAD_SHED_QUEUE_MAX,

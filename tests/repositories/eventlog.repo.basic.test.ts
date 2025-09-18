@@ -61,6 +61,7 @@ describe('EventLogRepository - Basic Operations', () => {
         {
           events: [newEvent],
           lastId: 'event-3',
+          lastSequence: 1,
         }
       );
     });

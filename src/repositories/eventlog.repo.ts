@@ -109,6 +109,19 @@ export class EventLogRepository {
   }
 
   /**
+   * Get the last event ID
+   */
+  async getLastId(): Promise<string | null> {
+    try {
+      const data = await this.loadData();
+      return data.lastId || null;
+    } catch (error) {
+      logger.error({ error }, 'Failed to get last event ID');
+      throw new Error('Failed to get last event ID');
+    }
+  }
+
+  /**
    * Get event by ID
    */
   async getById(id: string): Promise<Event | null> {
