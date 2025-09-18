@@ -1,9 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { logger } from '../core/logger';
 import { DomainError, ErrorFactory } from '../core/errors';
 import { z } from 'zod';
 
-export const errorHandler = (error: Error, req: Request, res: Response, next: NextFunction) => {
+export const errorHandler = (error: Error, req: Request, res: Response) => {
   logger.error({ error, req: { id: req.id, method: req.method, url: req.url } }, 'Request error');
 
   if (error instanceof DomainError) {

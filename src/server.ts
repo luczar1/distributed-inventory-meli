@@ -1,7 +1,7 @@
 import { app } from './app';
 import { logger } from './core/logger';
 import { syncWorker } from './workers/sync.worker';
-import { apiBulkhead, syncBulkhead, fileSystemBulkhead } from './utils/bulkhead';
+// Bulkhead imports removed as they are not used in this file
 import { getBulkheadMetrics } from './utils/bulkhead';
 
 const PORT = process.env['PORT'] || 3000;

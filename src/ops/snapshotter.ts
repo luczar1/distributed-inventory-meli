@@ -186,7 +186,7 @@ export class Snapshotter {
       const sortedTailEvents = tailEvents.sort((a, b) => a.sequence - b.sequence);
 
       // Start with snapshot state
-      let currentState = { ...snapshot.centralInventory };
+      const currentState = { ...snapshot.centralInventory };
 
       // Apply tail events
       for (const event of sortedTailEvents) {

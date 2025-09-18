@@ -1,261 +1,123 @@
-import { join } from 'path';
-import { readJsonFile, writeJsonFile, ensureDir } from '../utils/fsSafe';
 import { eventLogRepository } from '../repositories/eventlog.repo';
 import { logger } from '../core/logger';
-import { CentralInventory, SyncState } from './sync.worker.types';
 import { EventProcessor } from './sync.worker.events';
+import { SyncWorkerState } from './sync.worker.state';
+import { CentralInventoryManager } from './sync.worker.inventory';
 import { snapshotter } from '../ops/snapshotter';
 import { syncWorkerBreaker } from '../utils/circuitBreaker';
 import { syncBulkhead } from '../utils/bulkhead';
 
 export class SyncWorker {
-  private readonly dataDir = 'data';
-  private readonly centralInventoryPath: string;
-  private state: SyncState = {
-    isRunning: false,
-  };
+  private stateManager = new SyncWorkerState();
+  private inventoryManager = new CentralInventoryManager();
   private eventProcessor = new EventProcessor();
-
-  constructor() {
-    this.centralInventoryPath = join(this.dataDir, 'central-inventory.json');
-  }
 
   /**
    * Start periodic sync with specified interval
    */
   startSync(intervalMs: number = 15000): void {
-    if (this.state.isRunning) {
-      logger.warn('Sync worker is already running');
-      return;
-    }
-
-    this.state.isRunning = true;
-    this.state.intervalId = setInterval(async () => {
-      try {
-        await this.syncOnce();
-      } catch (error) {
-        logger.error({ error }, 'Error during periodic sync');
-      }
-    }, intervalMs);
-
-    logger.info({ intervalMs }, 'Sync worker started');
+    this.stateManager.startSync(intervalMs, () => this.syncOnce());
   }
 
   /**
    * Stop periodic sync
    */
   stopSync(): void {
-    if (!this.state.isRunning) {
-      logger.warn('Sync worker is not running');
-      return;
-    }
-
-    if (this.state.intervalId) {
-      clearInterval(this.state.intervalId);
-      this.state.intervalId = undefined;
-    }
-
-    this.state.isRunning = false;
-    logger.info('Sync worker stopped');
+    this.stateManager.stopSync();
   }
 
   /**
-   * Perform a single sync operation with circuit breaker and bulkhead
+   * Check if sync worker is running
    */
-  async syncOnce(): Promise<void> {
-    return syncBulkhead.run(async () => {
-      return syncWorkerBreaker.execute(async () => {
-        try {
-          logger.info('Starting sync operation');
-          await this.applyEventsToCentral();
-          logger.info('Sync operation completed successfully');
-        } catch (error) {
-          logger.error({ error }, 'Sync operation failed');
-          throw error;
-        }
-      });
-    });
-  }
-
-  /**
-   * Apply new events to central inventory with retry logic and dead-letter handling
-   */
-  private async applyEventsToCentral(): Promise<void> {
-    try {
-      // Get all events
-      const events = await eventLogRepository.getAll();
-      
-      if (events.length === 0) {
-        logger.debug('No events to process');
-        return;
-      }
-
-      // Filter events that haven't been processed yet
-      const newEvents = this.eventProcessor.getNewEvents(events, this.state.lastProcessedEventId);
-      
-      if (newEvents.length === 0) {
-        logger.debug('No new events to process');
-        return;
-      }
-
-      logger.info({ count: newEvents.length }, 'Processing new events');
-
-      // Load current central inventory
-      const centralInventory = await this.loadCentralInventory();
-
-      // Process events with retry logic
-      const processedEvents: string[] = [];
-      const failedEvents: string[] = [];
-
-      for (const event of newEvents) {
-        try {
-          await this.eventProcessor.applyEventToCentral(centralInventory, event);
-          processedEvents.push(event.id);
-          logger.debug({ eventId: event.id }, 'Event processed successfully');
-        } catch (error) {
-          logger.warn({ eventId: event.id, error }, 'Event processing failed');
-          failedEvents.push(event.id);
-          
-          // Record failure in event log
-          await eventLogRepository.recordFailure(event.id, (error as Error).message);
-        }
-      }
-
-      // Handle failed events - move to dead letter queue if max retries exceeded
-      const maxRetries = 3;
-      for (const eventId of failedEvents) {
-        const event = events.find(e => e.id === eventId);
-        if (event && (event.retryCount || 0) >= maxRetries) {
-          logger.error({ eventId, retryCount: event.retryCount }, 'Moving event to dead letter queue');
-          await eventLogRepository.moveToDeadLetter(eventId, `Max retries (${maxRetries}) exceeded`);
-        }
-      }
-
-      // Save updated central inventory only if we have processed events
-      if (processedEvents.length > 0) {
-        await this.saveCentralInventory(centralInventory);
-
-        // Check if we should create a snapshot
-        const allEvents = await eventLogRepository.getAll();
-        const snapshot = await snapshotter.maybeSnapshot(allEvents, centralInventory);
-        
-        if (snapshot) {
-          // Compact event log after snapshot
-          await snapshotter.compactEventLog(snapshot.sequence);
-          
-          // Clean up old snapshots
-          await snapshotter.cleanupOldSnapshots(3);
-        }
-
-        // Update last processed event ID
-        this.state.lastProcessedEventId = newEvents[newEvents.length - 1].id;
-
-        logger.info({ 
-          processedCount: processedEvents.length,
-          failedCount: failedEvents.length,
-          lastEventId: this.state.lastProcessedEventId,
-          snapshotCreated: !!snapshot
-        }, 'Events applied to central inventory');
-      } else {
-        logger.warn({ failedCount: failedEvents.length }, 'No events were successfully processed');
-      }
-
-    } catch (error) {
-      logger.error({ error }, 'Failed to apply events to central inventory');
-      throw error;
-    }
-  }
-
-  /**
-   * Load central inventory from file
-   */
-  private async loadCentralInventory(): Promise<CentralInventory> {
-    try {
-      await ensureDir(this.dataDir);
-      const data = await readJsonFile<CentralInventory>(this.centralInventoryPath);
-      return data || {};
-    } catch (error) {
-      logger.warn({ error, filePath: this.centralInventoryPath }, 'Failed to load central inventory, returning empty data');
-      return {};
-    }
-  }
-
-  /**
-   * Save central inventory to file
-   */
-  private async saveCentralInventory(inventory: CentralInventory): Promise<void> {
-    await ensureDir(this.dataDir);
-    await writeJsonFile(this.centralInventoryPath, inventory);
+  isRunning(): boolean {
+    return this.stateManager.isRunning();
   }
 
   /**
    * Get sync worker status
    */
-  getStatus(): { isRunning: boolean; lastProcessedEventId?: string } {
+  getStatus(): {
+    isRunning: boolean;
+    lastProcessedEventId?: string;
+  } {
+    const state = this.stateManager.getState();
     return {
-      isRunning: this.state.isRunning,
-      lastProcessedEventId: this.state.lastProcessedEventId,
+      isRunning: state.isRunning,
+      lastProcessedEventId: state.lastProcessedEventId,
     };
   }
 
   /**
-   * Replay event log on boot to bring state to consistency
+   * Run sync once
+   */
+  async syncOnce(): Promise<void> {
+    if (syncWorkerBreaker.isOpen()) {
+      logger.warn('Sync worker circuit breaker is open, skipping sync');
+      return;
+    }
+
+    return syncBulkhead.execute(async () => {
+      try {
+        await syncWorkerBreaker.execute(async () => {
+          await this.processEvents();
+        });
+      } catch (error) {
+        logger.error({ error }, 'Sync operation failed');
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Replay event log on boot
    */
   async replayOnBoot(): Promise<void> {
     try {
       logger.info('Starting event log replay on boot');
-      
-      // Get all events from the log
-      const events = await eventLogRepository.getAll();
-      
-      if (events.length === 0) {
-        logger.info('No events to replay');
-        // Still ensure central inventory is initialized
-        const centralInventory = await this.loadCentralInventory();
-        await this.saveCentralInventory(centralInventory);
-        return;
-      }
-
-      // Sort events by sequence to ensure correct order
-      const sortedEvents = events.sort((a, b) => a.sequence - b.sequence);
-      
-      logger.info({ eventCount: sortedEvents.length }, 'Replaying events from log');
-
-      // Load current central inventory
-      const centralInventory = await this.loadCentralInventory();
-
-      // Apply all events to central inventory
-      for (const event of sortedEvents) {
-        await this.eventProcessor.applyEventToCentral(centralInventory, event);
-      }
-
-      // Save updated central inventory
-      await this.saveCentralInventory(centralInventory);
-
-      // Update last processed event ID
-      this.state.lastProcessedEventId = sortedEvents[sortedEvents.length - 1].id;
-
-      logger.info({ 
-        replayedCount: sortedEvents.length,
-        lastEventId: this.state.lastProcessedEventId 
-      }, 'Event log replay completed successfully');
-
+      await this.processEvents();
+      logger.info('Event log replay completed');
     } catch (error) {
-      logger.error({ error }, 'Failed to replay event log on boot');
+      logger.error({ error }, 'Event log replay failed');
       throw error;
     }
   }
 
   /**
-   * Reset sync state (for testing)
+   * Process events from the event log
    */
-  resetState(): void {
-    this.state = {
-      isRunning: false,
-    };
-    logger.info('Sync worker state reset');
+  private async processEvents(): Promise<void> {
+    try {
+      const lastProcessedId = this.stateManager.getLastProcessedEventId();
+      const events = lastProcessedId 
+        ? await eventLogRepository.getAfterSequence(0) // Get all events for replay
+        : await eventLogRepository.getAll();
+
+      if (events.length === 0) {
+        logger.debug('No events to process');
+        return;
+      }
+
+      logger.info({ eventCount: events.length }, 'Processing events');
+
+      for (const event of events) {
+        try {
+          await this.eventProcessor.processEvent(event, this.inventoryManager);
+          this.stateManager.setLastProcessedEventId(event.id);
+        } catch (error) {
+          logger.error({ error, eventId: event.id }, 'Failed to process event');
+          // Continue processing other events
+        }
+      }
+
+      // Create snapshot if needed
+      await snapshotter.maybeSnapshot();
+      
+      logger.info({ processedEvents: events.length }, 'Events processed successfully');
+    } catch (error) {
+      logger.error({ error }, 'Failed to process events');
+      throw error;
+    }
   }
 }
 
-// Singleton instance
 export const syncWorker = new SyncWorker();

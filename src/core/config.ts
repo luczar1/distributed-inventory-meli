@@ -1,239 +1,139 @@
-/**
- * Centralized Resilience Configuration
- * 
- * Environment-driven configuration with typed defaults for resilience features:
- * - Concurrency control
- * - Rate limiting
- * - Circuit breakers
- * - Retry policies
- * - Load shedding
- * - Idempotency TTL
- */
+import { ResilienceConfig } from './config.types';
+import { 
+  parsePositiveInt, 
+  parseNonNegativeInt, 
+  parseNonNegativeFloat 
+} from './config.utils';
 
-export interface ResilienceConfig {
-  // Concurrency Control
-  readonly CONCURRENCY_API: number;
-  readonly CONCURRENCY_SYNC: number;
-  
-  // Rate Limiting
-  readonly RATE_LIMIT_RPS: number;
-  readonly RATE_LIMIT_BURST: number;
-  
-  // Circuit Breaker
-  readonly BREAKER_THRESHOLD: number;
-  readonly BREAKER_COOLDOWN_MS: number;
-  
-  // Retry Policy
-  readonly RETRY_BASE_MS: number;
-  readonly RETRY_TIMES: number;
-  
-  // Event Processing
-  readonly SNAPSHOT_EVERY_N_EVENTS: number;
-  
-  // Load Shedding
-  readonly LOAD_SHED_QUEUE_MAX: number;
-  
-  // Idempotency
-  readonly IDEMP_TTL_MS: number;
-}
-
-/**
- * Parse environment variable with type conversion and validation
- */
-function parseEnvVar<T>(
-  key: string,
-  defaultValue: T,
-  parser: (value: string) => T,
-  validator?: (value: T) => boolean
-): T {
-  const envValue = process.env[key];
-  
-  if (envValue === undefined) {
-    return defaultValue;
-  }
-  
-  try {
-    const parsed = parser(envValue);
-    
-    if (validator && !validator(parsed)) {
-      console.warn(`Invalid value for ${key}: ${envValue}. Using default: ${defaultValue}`);
-      return defaultValue;
-    }
-    
-    return parsed;
-  } catch (error) {
-    console.warn(`Failed to parse ${key}: ${envValue}. Using default: ${defaultValue}`);
-    return defaultValue;
-  }
-}
-
-/**
- * Parse integer with validation
- */
-function parseIntWithValidation(
-  key: string,
-  defaultValue: number,
-  min: number = 0,
-  max: number = Number.MAX_SAFE_INTEGER
-): number {
-  return parseEnvVar(
-    key,
-    defaultValue,
-    (value) => parseInt(value, 10),
-    (value) => value >= min && value <= max && Number.isInteger(value)
-  );
-}
-
-/**
- * Parse positive integer
- */
-function parsePositiveInt(key: string, defaultValue: number): number {
-  return parseIntWithValidation(key, defaultValue, 1);
-}
-
-/**
- * Parse non-negative integer
- */
-function parseNonNegativeInt(key: string, defaultValue: number): number {
-  return parseIntWithValidation(key, defaultValue, 0);
-}
-
-/**
- * Parse positive float
- */
-function parsePositiveFloat(key: string, defaultValue: number): number {
-  return parseEnvVar(
-    key,
-    defaultValue,
-    (value) => parseFloat(value),
-    (value) => value > 0 && Number.isFinite(value)
-  );
-}
-
-/**
- * Parse non-negative float
- */
-function parseNonNegativeFloat(key: string, defaultValue: number): number {
-  return parseEnvVar(
-    key,
-    defaultValue,
-    (value) => parseFloat(value),
-    (value) => value >= 0 && Number.isFinite(value)
-  );
-}
-
-/**
- * Resilience configuration with environment-driven settings
- */
 export const config: ResilienceConfig = Object.freeze({
-  // Concurrency Control
+  // Concurrency limits
   CONCURRENCY_API: parsePositiveInt('CONCURRENCY_API', 16),
   CONCURRENCY_SYNC: parsePositiveInt('CONCURRENCY_SYNC', 4),
   
-  // Rate Limiting (requests per second)
-  RATE_LIMIT_RPS: parsePositiveFloat('RATE_LIMIT_RPS', 100.0),
+  // Rate limiting
+  RATE_LIMIT_RPS: parsePositiveInt('RATE_LIMIT_RPS', 100),
   RATE_LIMIT_BURST: parsePositiveInt('RATE_LIMIT_BURST', 200),
   
-  // Circuit Breaker (failure threshold percentage)
-  BREAKER_THRESHOLD: parseNonNegativeFloat('BREAKER_THRESHOLD', 0.5), // 50%
-  BREAKER_COOLDOWN_MS: parsePositiveInt('BREAKER_COOLDOWN_MS', 30000), // 30 seconds
+  // Circuit breaker
+  BREAKER_THRESHOLD: parseNonNegativeFloat('BREAKER_THRESHOLD', 0.5),
+  BREAKER_COOLDOWN_MS: parsePositiveInt('BREAKER_COOLDOWN_MS', 30000),
   
-  // Retry Policy
-  RETRY_BASE_MS: parsePositiveInt('RETRY_BASE_MS', 1000), // 1 second
+  // Retry configuration
+  RETRY_BASE_MS: parsePositiveInt('RETRY_BASE_MS', 1000),
   RETRY_TIMES: parseNonNegativeInt('RETRY_TIMES', 3),
   
-  // Event Processing
+  // Snapshot configuration
   SNAPSHOT_EVERY_N_EVENTS: parsePositiveInt('SNAPSHOT_EVERY_N_EVENTS', 100),
   
-  // Load Shedding
+  // Load shedding
   LOAD_SHED_QUEUE_MAX: parsePositiveInt('LOAD_SHED_QUEUE_MAX', 1000),
   
-  // Idempotency TTL (time to live in milliseconds)
-  IDEMP_TTL_MS: parsePositiveInt('IDEMP_TTL_MS', 300000), // 5 minutes
+  // Idempotency
+  IDEMP_TTL_MS: parsePositiveInt('IDEMP_TTL_MS', 300000),
+  
+  // Sync worker
+  SYNC_INTERVAL_MS: parsePositiveInt('SYNC_INTERVAL_MS', 15000),
+  
+  // Logging
+  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
 });
 
-/**
- * Get configuration value by key
- */
 export function getConfigValue<K extends keyof ResilienceConfig>(key: K): ResilienceConfig[K] {
   return config[key];
 }
 
-/**
- * Check if configuration is valid
- */
-export function validateConfig(): boolean {
-  const issues: string[] = [];
-  
-  // Validate concurrency settings
+function validateConcurrencyLimits(errors: string[]): void {
   if (config.CONCURRENCY_API <= 0) {
-    issues.push('CONCURRENCY_API must be positive');
+    errors.push('CONCURRENCY_API must be positive');
   }
   
   if (config.CONCURRENCY_SYNC <= 0) {
-    issues.push('CONCURRENCY_SYNC must be positive');
+    errors.push('CONCURRENCY_SYNC must be positive');
   }
-  
-  // Validate rate limiting
+}
+
+function validateRateLimiting(errors: string[]): void {
   if (config.RATE_LIMIT_RPS <= 0) {
-    issues.push('RATE_LIMIT_RPS must be positive');
+    errors.push('RATE_LIMIT_RPS must be positive');
   }
   
   if (config.RATE_LIMIT_BURST <= 0) {
-    issues.push('RATE_LIMIT_BURST must be positive');
+    errors.push('RATE_LIMIT_BURST must be positive');
   }
   
-  // Validate circuit breaker
+  if (config.RATE_LIMIT_BURST < config.RATE_LIMIT_RPS) {
+    errors.push('RATE_LIMIT_BURST must be >= RATE_LIMIT_RPS');
+  }
+}
+
+function validateCircuitBreaker(errors: string[]): void {
   if (config.BREAKER_THRESHOLD < 0 || config.BREAKER_THRESHOLD > 1) {
-    issues.push('BREAKER_THRESHOLD must be between 0 and 1');
+    errors.push('BREAKER_THRESHOLD must be between 0 and 1');
   }
   
   if (config.BREAKER_COOLDOWN_MS <= 0) {
-    issues.push('BREAKER_COOLDOWN_MS must be positive');
+    errors.push('BREAKER_COOLDOWN_MS must be positive');
   }
-  
-  // Validate retry policy
+}
+
+function validateRetryConfig(errors: string[]): void {
   if (config.RETRY_BASE_MS <= 0) {
-    issues.push('RETRY_BASE_MS must be positive');
+    errors.push('RETRY_BASE_MS must be positive');
   }
   
   if (config.RETRY_TIMES < 0) {
-    issues.push('RETRY_TIMES must be non-negative');
+    errors.push('RETRY_TIMES must be non-negative');
   }
-  
-  // Validate event processing
+}
+
+function validateOtherConfig(errors: string[]): void {
   if (config.SNAPSHOT_EVERY_N_EVENTS <= 0) {
-    issues.push('SNAPSHOT_EVERY_N_EVENTS must be positive');
+    errors.push('SNAPSHOT_EVERY_N_EVENTS must be positive');
   }
   
-  // Validate load shedding
   if (config.LOAD_SHED_QUEUE_MAX <= 0) {
-    issues.push('LOAD_SHED_QUEUE_MAX must be positive');
+    errors.push('LOAD_SHED_QUEUE_MAX must be positive');
   }
   
-  // Validate idempotency
   if (config.IDEMP_TTL_MS <= 0) {
-    issues.push('IDEMP_TTL_MS must be positive');
+    errors.push('IDEMP_TTL_MS must be positive');
   }
   
-  if (issues.length > 0) {
-    console.error('Configuration validation failed:', issues);
+  if (config.SYNC_INTERVAL_MS <= 0) {
+    errors.push('SYNC_INTERVAL_MS must be positive');
+  }
+  
+  const validLogLevels = ['debug', 'info', 'warn', 'error'];
+  if (!validLogLevels.includes(config.LOG_LEVEL)) {
+    errors.push(`LOG_LEVEL must be one of: ${validLogLevels.join(', ')}`);
+  }
+}
+
+export function validateConfig(): boolean {
+  const errors: string[] = [];
+  
+  validateConcurrencyLimits(errors);
+  validateRateLimiting(errors);
+  validateCircuitBreaker(errors);
+  validateRetryConfig(errors);
+  validateOtherConfig(errors);
+  
+  if (errors.length > 0) {
+    console.error('Configuration validation failed:');
+    errors.forEach(error => console.error(`  - ${error}`));
     return false;
   }
   
   return true;
 }
 
-/**
- * Get configuration summary for logging
- */
 export function getConfigSummary(): Record<string, unknown> {
   return {
     concurrency: {
       api: config.CONCURRENCY_API,
       sync: config.CONCURRENCY_SYNC,
     },
-    rateLimit: {
+    rateLimiting: {
       rps: config.RATE_LIMIT_RPS,
       burst: config.RATE_LIMIT_BURST,
     },
@@ -245,14 +145,20 @@ export function getConfigSummary(): Record<string, unknown> {
       baseMs: config.RETRY_BASE_MS,
       times: config.RETRY_TIMES,
     },
-    events: {
-      snapshotEvery: config.SNAPSHOT_EVERY_N_EVENTS,
+    snapshot: {
+      everyNEvents: config.SNAPSHOT_EVERY_N_EVENTS,
     },
     loadShedding: {
       queueMax: config.LOAD_SHED_QUEUE_MAX,
     },
     idempotency: {
       ttlMs: config.IDEMP_TTL_MS,
+    },
+    sync: {
+      intervalMs: config.SYNC_INTERVAL_MS,
+    },
+    logging: {
+      level: config.LOG_LEVEL,
     },
   };
 }

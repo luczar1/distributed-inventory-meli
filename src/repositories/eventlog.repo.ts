@@ -1,33 +1,8 @@
 import { join } from 'path';
 import { readJsonFile, writeJsonFile, ensureDir } from '../utils/fsSafe';
 import { logger } from '../core/logger';
-
-// Event structure
-export interface Event {
-  id: string;
-  type: string;
-  payload: Record<string, unknown>;
-  ts: number;
-  sequence: number;
-  retryCount?: number;
-  lastFailureTs?: number;
-  failureReason?: string;
-}
-
-// Dead letter event structure
-export interface DeadLetterEvent {
-  originalEvent: Event;
-  dlqTs: number;
-  finalFailureReason: string;
-  totalRetries: number;
-}
-
-// Event log data structure
-interface EventLogData {
-  events: Event[];
-  lastId?: string;
-  lastSequence?: number;
-}
+import { Event, EventLogData } from './eventlog.types';
+import { deadLetterQueue } from './eventlog.deadletter';
 
 export class EventLogRepository {
   private readonly dataDir = 'data';
@@ -100,9 +75,7 @@ export class EventLogRepository {
   async getByTimeRange(startTs: number, endTs: number): Promise<Event[]> {
     try {
       const data = await this.loadData();
-      return data.events.filter(event => 
-        event.ts >= startTs && event.ts <= endTs
-      );
+      return data.events.filter(event => event.ts >= startTs && event.ts <= endTs);
     } catch (error) {
       logger.error({ error, startTs, endTs }, 'Failed to get events by time range');
       throw new Error('Failed to get events by time range');
@@ -110,82 +83,33 @@ export class EventLogRepository {
   }
 
   /**
-   * Get the last event ID
+   * Get events after a specific sequence
    */
-  async getLastId(): Promise<string | null> {
+  async getAfterSequence(sequence: number): Promise<Event[]> {
     try {
       const data = await this.loadData();
-      return data.lastId || null;
+      return data.events.filter(event => event.sequence > sequence);
     } catch (error) {
-      logger.error({ error }, 'Failed to get last event ID');
-      throw new Error('Failed to get last event ID');
+      logger.error({ error, sequence }, 'Failed to get events after sequence');
+      throw new Error('Failed to get events after sequence');
     }
   }
 
   /**
-   * Get event count
+   * Get the last event
    */
-  async getCount(): Promise<number> {
+  async getLast(): Promise<Event | null> {
     try {
       const data = await this.loadData();
-      return data.events.length;
+      return data.events.length > 0 ? data.events[data.events.length - 1] : null;
     } catch (error) {
-      logger.error({ error }, 'Failed to get event count');
-      throw new Error('Failed to get event count');
+      logger.error({ error }, 'Failed to get last event');
+      throw new Error('Failed to get last event');
     }
   }
 
   /**
-   * Clear all events
-   */
-  async clear(): Promise<void> {
-    try {
-      const data: EventLogData = { events: [] };
-      await this.saveData(data);
-      logger.info('Event log cleared');
-    } catch (error) {
-      logger.error({ error }, 'Failed to clear event log');
-      throw new Error('Failed to clear event log');
-    }
-  }
-
-  /**
-   * Load event log data from file
-   */
-  private async loadData(): Promise<EventLogData> {
-    try {
-      await ensureDir(this.dataDir);
-      const data = await readJsonFile<EventLogData>(this.filePath);
-      return data || { events: [] };
-    } catch (error) {
-      logger.warn({ error, filePath: this.filePath }, 'Failed to load event log data, returning empty data');
-      return { events: [] };
-    }
-  }
-
-  /**
-   * Save event log data to file
-   */
-  private async saveData(data: EventLogData): Promise<void> {
-    await ensureDir(this.dataDir);
-    await writeJsonFile(this.filePath, data);
-  }
-
-  /**
-   * Get events with pagination
-   */
-  async getPaginated(offset: number, limit: number): Promise<Event[]> {
-    try {
-      const data = await this.loadData();
-      return data.events.slice(offset, offset + limit);
-    } catch (error) {
-      logger.error({ error, offset, limit }, 'Failed to get paginated events');
-      throw new Error('Failed to get paginated events');
-    }
-  }
-
-  /**
-   * Get events by ID (for verification)
+   * Get event by ID
    */
   async getById(id: string): Promise<Event | null> {
     try {
@@ -198,118 +122,139 @@ export class EventLogRepository {
   }
 
   /**
-   * Record a failure for an event
+   * Update event retry information
    */
-  async recordFailure(eventId: string, reason: string): Promise<void> {
+  async updateRetryInfo(eventId: string, retryCount: number, failureReason?: string): Promise<void> {
     try {
       const data = await this.loadData();
       const event = data.events.find(e => e.id === eventId);
+      
       if (event) {
-        event.retryCount = (event.retryCount || 0) + 1;
+        event.retryCount = retryCount;
         event.lastFailureTs = Date.now();
-        event.failureReason = reason;
+        if (failureReason) {
+          event.failureReason = failureReason;
+        }
+        
         await this.saveData(data);
-        logger.warn({ eventId, retryCount: event.retryCount, reason }, 'Event failure recorded');
+        logger.info({ eventId, retryCount }, 'Event retry info updated');
       }
     } catch (error) {
-      logger.error({ error, eventId, reason }, 'Failed to record event failure');
-      throw new Error(`Failed to record failure for event ${eventId}`);
-    }
-  }
-
-  /**
-   * Get events that have failed and need retry
-   */
-  async getFailedEvents(maxRetries: number = 3): Promise<Event[]> {
-    try {
-      const data = await this.loadData();
-      return data.events.filter(event => 
-        event.retryCount !== undefined && 
-        event.retryCount > 0 && 
-        event.retryCount < maxRetries
-      );
-    } catch (error) {
-      logger.error({ error, maxRetries }, 'Failed to get failed events');
-      throw new Error('Failed to get failed events');
+      logger.error({ error, eventId }, 'Failed to update retry info');
+      throw new Error(`Failed to update retry info for event ${eventId}`);
     }
   }
 
   /**
    * Move event to dead letter queue
    */
-  async moveToDeadLetter(eventId: string, finalReason: string): Promise<void> {
+  async moveToDLQ(eventId: string, finalFailureReason: string): Promise<void> {
+    try {
+      const event = await this.getById(eventId);
+      if (event) {
+        await deadLetterQueue.moveToDLQ(event, finalFailureReason);
+        await this.removeEvent(eventId);
+      }
+    } catch (error) {
+      logger.error({ error, eventId }, 'Failed to move event to DLQ');
+      throw new Error(`Failed to move event ${eventId} to DLQ`);
+    }
+  }
+
+  /**
+   * Remove an event from the log
+   */
+  async removeEvent(eventId: string): Promise<void> {
     try {
       const data = await this.loadData();
-      const eventIndex = data.events.findIndex(e => e.id === eventId);
-      if (eventIndex === -1) {
-        throw new Error(`Event ${eventId} not found`);
+      const index = data.events.findIndex(e => e.id === eventId);
+      
+      if (index !== -1) {
+        data.events.splice(index, 1);
+        await this.saveData(data);
+        logger.info({ eventId }, 'Event removed from log');
       }
+    } catch (error) {
+      logger.error({ error, eventId }, 'Failed to remove event');
+      throw new Error(`Failed to remove event ${eventId}`);
+    }
+  }
 
-      const event = data.events[eventIndex];
-      const deadLetterEvent: DeadLetterEvent = {
-        originalEvent: event,
-        dlqTs: Date.now(),
-        finalFailureReason: finalReason,
-        totalRetries: event.retryCount || 0
+  /**
+   * Clear all events
+   */
+  async clear(): Promise<void> {
+    try {
+      await ensureDir(this.dataDir);
+      await writeJsonFile(this.filePath, { events: [], lastId: undefined, lastSequence: undefined });
+      logger.info('Event log cleared');
+    } catch (error) {
+      logger.error({ error }, 'Failed to clear event log');
+      throw new Error('Failed to clear event log');
+    }
+  }
+
+  /**
+   * Get event log statistics
+   */
+  async getStats(): Promise<{
+    totalEvents: number;
+    eventsByType: Record<string, number>;
+    oldestEvent?: number;
+    newestEvent?: number;
+    lastSequence?: number;
+  }> {
+    try {
+      const data = await this.loadData();
+      
+      const stats = {
+        totalEvents: data.events.length,
+        eventsByType: {} as Record<string, number>,
+        oldestEvent: undefined as number | undefined,
+        newestEvent: undefined as number | undefined,
+        lastSequence: data.lastSequence,
       };
 
-      // Remove from main log
-      data.events.splice(eventIndex, 1);
-      await this.saveData(data);
+      if (data.events.length === 0) {
+        return stats;
+      }
 
-      // Append to dead letter queue
-      await this.appendToDeadLetter(deadLetterEvent);
-      
-      logger.error({ eventId, totalRetries: deadLetterEvent.totalRetries, finalReason }, 'Event moved to dead letter queue');
+      // Calculate statistics
+      for (const event of data.events) {
+        stats.eventsByType[event.type] = (stats.eventsByType[event.type] || 0) + 1;
+      }
+
+      const timestamps = data.events.map(e => e.ts);
+      stats.oldestEvent = Math.min(...timestamps);
+      stats.newestEvent = Math.max(...timestamps);
+
+      return stats;
     } catch (error) {
-      logger.error({ error, eventId, finalReason }, 'Failed to move event to dead letter queue');
-      throw new Error(`Failed to move event ${eventId} to dead letter queue`);
+      logger.error({ error }, 'Failed to get event log statistics');
+      throw new Error('Failed to get event log statistics');
     }
   }
 
   /**
-   * Append event to dead letter queue
+   * Load event log data
    */
-  private async appendToDeadLetter(deadLetterEvent: DeadLetterEvent): Promise<void> {
+  private async loadData(): Promise<EventLogData> {
     try {
-      const dlqPath = join(this.dataDir, 'dead-letter.json');
-      const existingData = await readJsonFile<DeadLetterEvent[]>(dlqPath) || [];
-      existingData.push(deadLetterEvent);
-      await writeJsonFile(dlqPath, existingData);
-      logger.info({ eventId: deadLetterEvent.originalEvent.id }, 'Event appended to dead letter queue');
+      await ensureDir(this.dataDir);
+      return await readJsonFile<EventLogData>(this.filePath);
     } catch (error) {
-      logger.error({ error, deadLetterEvent }, 'Failed to append to dead letter queue');
-      throw new Error('Failed to append to dead letter queue');
+      // File doesn't exist, return empty data
+      return { events: [], lastId: undefined, lastSequence: undefined };
     }
   }
 
   /**
-   * Get dead letter events
+   * Save event log data
    */
-  async getDeadLetterEvents(): Promise<DeadLetterEvent[]> {
-    try {
-      const dlqPath = join(this.dataDir, 'dead-letter.json');
-      return await readJsonFile<DeadLetterEvent[]>(dlqPath) || [];
-    } catch (error) {
-      logger.error({ error }, 'Failed to get dead letter events');
-      throw new Error('Failed to get dead letter events');
-    }
-  }
-
-  /**
-   * Clear dead letter queue
-   */
-  async clearDeadLetterQueue(): Promise<void> {
-    try {
-      const dlqPath = join(this.dataDir, 'dead-letter.json');
-      await writeJsonFile(dlqPath, []);
-      logger.info('Dead letter queue cleared');
-    } catch (error) {
-      logger.error({ error }, 'Failed to clear dead letter queue');
-      throw new Error('Failed to clear dead letter queue');
-    }
+  private async saveData(data: EventLogData): Promise<void> {
+    await ensureDir(this.dataDir);
+    await writeJsonFile(this.filePath, data);
   }
 }
 
-// Global instance
 export const eventLogRepository = new EventLogRepository();
