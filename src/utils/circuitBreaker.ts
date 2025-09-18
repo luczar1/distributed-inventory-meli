@@ -35,6 +35,13 @@ export class CircuitBreaker {
   }
 
   /**
+   * Check if circuit breaker is open
+   */
+  isOpen(): boolean {
+    return this.state === 'open';
+  }
+
+  /**
    * Execute a function through the circuit breaker
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {

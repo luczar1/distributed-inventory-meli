@@ -48,6 +48,13 @@ export class SyncWorker {
   }
 
   /**
+   * Reset sync worker state (for testing)
+   */
+  resetState(): void {
+    this.stateManager.reset();
+  }
+
+  /**
    * Run sync once
    */
   async syncOnce(): Promise<void> {
@@ -56,7 +63,7 @@ export class SyncWorker {
       return;
     }
 
-    return syncBulkhead.execute(async () => {
+    return syncBulkhead.run(async () => {
       try {
         await syncWorkerBreaker.execute(async () => {
           await this.processEvents();
@@ -110,7 +117,8 @@ export class SyncWorker {
       }
 
       // Create snapshot if needed
-      await snapshotter.maybeSnapshot();
+      const centralInventory = await this.inventoryManager.loadCentralInventory();
+      await snapshotter.maybeSnapshot(events, centralInventory);
       
       logger.info({ processedEvents: events.length }, 'Events processed successfully');
     } catch (error) {
