@@ -18,6 +18,16 @@ describe('Inventory Routes - Basic', () => {
 
   describe('GET /:sku/:storeId', () => {
     it('should return inventory item', async () => {
+      // First create the inventory record
+      await request(app)
+        .post('/api/inventory')
+        .send({
+          sku: 'SKU123',
+          storeId: 'STORE001',
+          initialQuantity: 100
+        })
+        .expect(201);
+
       const response = await request(app)
         .get('/api/inventory/SKU123/STORE001')
         .expect(200);
@@ -29,12 +39,23 @@ describe('Inventory Routes - Basic', () => {
           storeId: 'STORE001',
           qty: 100,
           version: 1,
+          createdAt: expect.any(String),
           updatedAt: expect.any(String),
         },
       });
     });
 
     it('should return valid date in updatedAt', async () => {
+      // First create the inventory record
+      await request(app)
+        .post('/api/inventory')
+        .send({
+          sku: 'SKU123',
+          storeId: 'STORE001',
+          initialQuantity: 100
+        })
+        .expect(201);
+
       const response = await request(app)
         .get('/api/inventory/SKU123/STORE001')
         .expect(200);
@@ -52,6 +73,16 @@ describe('Inventory Routes - Basic', () => {
       ];
 
       for (const testCase of testCases) {
+        // First create the inventory record
+        await request(app)
+          .post('/api/inventory')
+          .send({
+            sku: testCase.sku,
+            storeId: testCase.storeId,
+            initialQuantity: 100
+          })
+          .expect(201);
+
         const response = await request(app)
           .get(`/api/inventory/${testCase.sku}/${testCase.storeId}`)
           .expect(200);
@@ -64,6 +95,16 @@ describe('Inventory Routes - Basic', () => {
     });
 
     it('should include request ID in response headers', async () => {
+      // First create the inventory record
+      await request(app)
+        .post('/api/inventory')
+        .send({
+          sku: 'SKU123',
+          storeId: 'STORE001',
+          initialQuantity: 100
+        })
+        .expect(201);
+
       const response = await request(app)
         .get('/api/inventory/SKU123/STORE001')
         .expect(200);
@@ -92,6 +133,7 @@ describe('Inventory Routes - Basic', () => {
           storeId: 'STORE002',
           qty: 50,
           version: 1,
+          createdAt: expect.any(String),
           updatedAt: expect.any(String),
         },
       });
@@ -134,6 +176,16 @@ describe('Inventory Routes - Basic', () => {
 
   describe('Response format', () => {
     it('should return JSON response for GET', async () => {
+      // First create the inventory record
+      await request(app)
+        .post('/api/inventory')
+        .send({
+          sku: 'SKU123',
+          storeId: 'STORE001',
+          initialQuantity: 100
+        })
+        .expect(201);
+
       const response = await request(app)
         .get('/api/inventory/SKU123/STORE001')
         .expect(200);

@@ -49,12 +49,17 @@ export function ifMatchMiddleware(req: Request, res: Response, next: NextFunctio
   try {
     const ifMatch = req.headers['if-match'] as string;
     logger.info({ reqId: req.id, ifMatch, path: req.path }, 'If-Match middleware processing');
+    
     if (ifMatch) {
       const version = extractVersionFromIfMatch(ifMatch);
       // Store in request for later use
       (req as any).ifMatchVersion = version;
       logger.info({ reqId: req.id, version }, 'If-Match version extracted');
+    } else {
+      // No If-Match header, continue without version check
+      (req as any).ifMatchVersion = undefined;
     }
+    
     next();
   } catch (error) {
     logger.warn({

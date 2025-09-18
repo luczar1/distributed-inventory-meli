@@ -6,25 +6,15 @@ export class EventProcessor {
   /**
    * Process a single event
    */
-  async processEvent(event: Event, inventoryManager: { updateCentralInventory: (storeId: string, sku: string, record: InventoryRecord) => Promise<void> }): Promise<void> {
+  async processEvent(event: Event, inventoryManager: { updateCentralInventory: (sku: string, storeId: string, quantity: number) => Promise<void> }): Promise<void> {
     const { sku, storeId } = event.payload as { sku: string; storeId: string };
     
     if (event.type === 'stock_adjusted') {
-      const { newQty, newVersion } = event.payload as { newQty: number; newVersion: number };
-      await inventoryManager.updateCentralInventory(storeId, sku, {
-        sku,
-        storeId,
-        qty: newQty,
-        version: newVersion,
-      });
+      const { newQty } = event.payload as { newQty: number };
+      await inventoryManager.updateCentralInventory(sku, storeId, newQty);
     } else if (event.type === 'stock_reserved') {
-      const { newQty, newVersion } = event.payload as { newQty: number; newVersion: number };
-      await inventoryManager.updateCentralInventory(storeId, sku, {
-        sku,
-        storeId,
-        qty: newQty,
-        version: newVersion,
-      });
+      const { newQty } = event.payload as { newQty: number };
+      await inventoryManager.updateCentralInventory(sku, storeId, newQty);
     }
     
     logger.debug({ eventId: event.id, type: event.type, sku, storeId }, 'Event processed');

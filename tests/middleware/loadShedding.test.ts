@@ -32,7 +32,7 @@ describe('LoadShedder', () => {
     });
 
     it('should shed when queue depth exceeds threshold', () => {
-      mockApiBulkhead.getStats.mockReturnValue({ queued: 1000 }); // Above default threshold
+      mockApiBulkhead.getStats.mockReturnValue({ queued: 1001 }); // Above default threshold (1000)
       mockSyncBulkhead.getStats.mockReturnValue({ queued: 0 });
       
       expect(loadShedder.shouldShed()).toBe(true);
@@ -48,7 +48,7 @@ describe('LoadShedder', () => {
 
   describe('Statistics', () => {
     it('should track shed requests', () => {
-      mockApiBulkhead.getStats.mockReturnValue({ queued: 1000 });
+      mockApiBulkhead.getStats.mockReturnValue({ queued: 1001 });
       mockSyncBulkhead.getStats.mockReturnValue({ queued: 0 });
       
       loadShedder.shouldShed();
@@ -72,7 +72,7 @@ describe('LoadShedder', () => {
     });
 
     it('should reset statistics', () => {
-      mockApiBulkhead.getStats.mockReturnValue({ queued: 1000 });
+      mockApiBulkhead.getStats.mockReturnValue({ queued: 1001 });
       mockSyncBulkhead.getStats.mockReturnValue({ queued: 0 });
       
       loadShedder.shouldShed();

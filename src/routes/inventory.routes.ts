@@ -38,24 +38,20 @@ router.get('/:sku/:storeId',
   validateParams(StoreParamsSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await apiBulkhead.run(async () => {
-        return apiBreaker.execute(async () => {
-          const { sku, storeId } = req.params as { sku: string; storeId: string };
-          logger.info({ req: { id: req.id }, sku, storeId }, 'Get inventory requested');
-          
-          // Get actual inventory record
-          const record = await inventoryRepository.get(sku, storeId);
-          
-          // Increment metrics
-          incrementGetInventory();
-          
-          // Set ETag header with version
-          res.set('ETag', `"${record.version}"`);
-          res.json({
-            success: true,
-            data: record
-          });
-        });
+      const { sku, storeId } = req.params as { sku: string; storeId: string };
+      logger.info({ req: { id: req.id }, sku, storeId }, 'Get inventory requested');
+      
+      // Get actual inventory record (business logic outside circuit breaker)
+      const record = await inventoryRepository.get(sku, storeId);
+      
+      // Increment metrics
+      incrementGetInventory();
+      
+      // Set ETag header with version
+      res.set('ETag', `"${record.version}"`);
+      res.json({
+        success: true,
+        data: record
       });
     } catch (error) {
       next(error);
@@ -68,28 +64,24 @@ router.post('/',
   validateBody(CreateInventorySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await apiBulkhead.run(async () => {
-        return apiBreaker.execute(async () => {
-          const { sku, storeId, initialQuantity } = req.body;
-          logger.info({ req: { id: req.id }, sku, storeId, initialQuantity }, 'Create inventory requested');
-          
-          // Create inventory record
-          const record = {
-            sku,
-            storeId,
-            qty: initialQuantity,
-            version: 1,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
-          
-          await inventoryRepository.upsert(record);
-          
-          res.status(201).json({
-            success: true,
-            data: record
-          });
-        });
+      const { sku, storeId, initialQuantity } = req.body;
+      logger.info({ req: { id: req.id }, sku, storeId, initialQuantity }, 'Create inventory requested');
+      
+      // Create inventory record
+      const record = {
+        sku,
+        storeId,
+        qty: initialQuantity,
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      await inventoryRepository.upsert(record);
+      
+      res.status(201).json({
+        success: true,
+        data: record
       });
     } catch (error) {
       next(error);

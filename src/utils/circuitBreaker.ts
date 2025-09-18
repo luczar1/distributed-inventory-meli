@@ -54,18 +54,34 @@ export class CircuitBreaker {
       }
     }
 
-    if (this.state === 'half-open' && this.halfOpenProbe) {
-      // Wait for existing probe to complete
-      await this.halfOpenProbe;
+    if (this.state === 'half-open') {
+      if (this.halfOpenProbe) {
+        // Wait for existing probe to complete
+        await this.halfOpenProbe;
+        // After waiting, check if we're still in half-open state
+        if (this.state !== 'half-open') {
+          // State changed while waiting, retry the execution
+          return this.execute(fn);
+        }
+      }
+      // Set the probe promise to track this execution
+      this.halfOpenProbe = this.executeWithTimeout(fn);
     }
 
     try {
-      const result = await this.executeWithTimeout(fn);
+      const result = this.state === 'half-open' 
+        ? await this.halfOpenProbe!
+        : await this.executeWithTimeout(fn);
+      
       this.onSuccess();
       return result;
     } catch (error) {
       this.onFailure();
       throw error;
+    } finally {
+      if (this.state === 'half-open') {
+        this.halfOpenProbe = undefined;
+      }
     }
   }
 
