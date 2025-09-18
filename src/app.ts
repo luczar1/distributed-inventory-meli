@@ -20,13 +20,13 @@ app.use(requestLoggerMiddleware);
 app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
   if (error instanceof SyntaxError && 'body' in error) {
     // JSON parse error
-    return res.status(500).json({
+    return res.status(400).json({
       success: false,
       error: {
-        name: 'InternalServerError',
-        message: 'Internal server error',
-        code: 'INTERNAL_SERVER_ERROR',
-        statusCode: 500,
+        name: 'BadRequestError',
+        message: 'Invalid JSON format',
+        code: 'INVALID_JSON',
+        statusCode: 400,
         timestamp: new Date().toISOString(),
       },
     });

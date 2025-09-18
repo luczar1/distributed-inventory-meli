@@ -12,6 +12,7 @@ describe('Inventory Routes - Validation', () => {
     app = express();
     app.use(express.json());
     app.use(requestIdMiddleware);
+    // Test routes directly without rate limiting and load shedding middleware
     app.use('/api/inventory', inventoryRoutes);
     app.use(errorHandler);
   });
@@ -27,7 +28,6 @@ describe('Inventory Routes - Validation', () => {
         .post('/api/inventory')
         .send(requestData)
         .expect(400);
-
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('VALIDATION_ERROR');
       expect(response.body.error.message).toContain('Validation failed');

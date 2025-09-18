@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { logger } from '../core/logger';
 import { DomainError, ErrorFactory, LockRejectionError } from '../core/errors';
 import { z } from 'zod';
@@ -11,7 +11,7 @@ interface ErrorWithCode {
   details?: unknown;
 }
 
-export const errorHandler = (error: Error, req: Request, res: Response) => {
+export const errorHandler = (error: Error, req: Request, res: Response, next: NextFunction) => {
   logger.error({ error, req: { id: req.id, method: req.method, url: req.url } }, 'Request error');
 
   // Handle lock rejection errors with special headers
