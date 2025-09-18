@@ -5,6 +5,8 @@ import { logger } from '../core/logger';
 import { CentralInventory, SyncState } from './sync.worker.types';
 import { EventProcessor } from './sync.worker.events';
 import { snapshotter } from '../ops/snapshotter';
+import { syncWorkerBreaker } from '../utils/circuitBreaker';
+import { syncBulkhead } from '../utils/bulkhead';
 
 export class SyncWorker {
   private readonly dataDir = 'data';
@@ -58,17 +60,21 @@ export class SyncWorker {
   }
 
   /**
-   * Perform a single sync operation
+   * Perform a single sync operation with circuit breaker and bulkhead
    */
   async syncOnce(): Promise<void> {
-    try {
-      logger.info('Starting sync operation');
-      await this.applyEventsToCentral();
-      logger.info('Sync operation completed successfully');
-    } catch (error) {
-      logger.error({ error }, 'Sync operation failed');
-      throw error;
-    }
+    return syncBulkhead.run(async () => {
+      return syncWorkerBreaker.execute(async () => {
+        try {
+          logger.info('Starting sync operation');
+          await this.applyEventsToCentral();
+          logger.info('Sync operation completed successfully');
+        } catch (error) {
+          logger.error({ error }, 'Sync operation failed');
+          throw error;
+        }
+      });
+    });
   }
 
   /**
