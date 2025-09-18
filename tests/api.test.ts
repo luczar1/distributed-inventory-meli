@@ -12,7 +12,7 @@ vi.mock('../src/repositories/eventlog.repo');
 vi.mock('../src/workers/sync.worker');
 
 describe('API Integration Tests', () => {
-  let server: any;
+  let server: unknown;
 
   beforeAll(async () => {
     server = app.listen(0);

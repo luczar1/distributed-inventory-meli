@@ -23,7 +23,7 @@ export class EventProcessor {
   /**
    * Apply a single event to central inventory
    */
-  async applyEventToCentral(centralInventory: any, event: Event): Promise<void> {
+  async applyEventToCentral(centralInventory: Record<string, unknown>, event: Event): Promise<void> {
     const { sku, storeId } = event.payload as { sku: string; storeId: string };
 
     if (!centralInventory[storeId]) {

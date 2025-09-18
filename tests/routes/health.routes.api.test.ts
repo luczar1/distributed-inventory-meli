@@ -3,7 +3,7 @@ import request from 'supertest';
 import { app } from '../../src/app';
 
 describe('Health Routes API', () => {
-  let server: any;
+  let server: unknown;
 
   beforeAll(() => {
     server = app;

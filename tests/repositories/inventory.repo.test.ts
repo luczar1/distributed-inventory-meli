@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { promises as fs } from 'fs';
-import { join } from 'path';
+// import { promises as fs } from 'fs'; // Not used
+// import { join } from 'path'; // Not used
 import { InventoryRepository } from '../../src/repositories/inventory.repo';
 import { InventoryRecord } from '../../src/core/types';
 import { NotFoundError } from '../../src/core/errors';
@@ -22,7 +22,7 @@ vi.mock('../../src/core/logger', () => ({
 
 describe('InventoryRepository', () => {
   let repo: InventoryRepository;
-  let mockData: any;
+  let mockData: unknown;
 
   beforeEach(() => {
     repo = new InventoryRepository();

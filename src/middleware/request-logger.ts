@@ -16,7 +16,7 @@ export const requestLoggerMiddleware = (req: Request, res: Response, next: NextF
 
   // Override res.end to capture response details
   const originalEnd = res.end;
-  res.end = function(chunk?: any, encoding?: any) {
+  res.end = function(chunk?: unknown, encoding?: unknown) {
     const durationMs = Date.now() - startTime;
     
     // Log request completion

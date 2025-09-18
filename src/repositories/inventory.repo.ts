@@ -1,4 +1,4 @@
-import { promises as fs } from 'fs';
+// import { promises as fs } from 'fs'; // Not used in this file
 import { join } from 'path';
 import { InventoryRecord, SKU, StoreId } from '../core/types';
 import { NotFoundError } from '../core/errors';

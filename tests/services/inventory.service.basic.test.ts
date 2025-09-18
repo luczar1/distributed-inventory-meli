@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { inventoryService } from '../../src/services/inventory.service';
-import { ConflictError, InsufficientStockError, NotFoundError } from '../../src/core/errors';
+import { ConflictError, InsufficientStockError } from '../../src/core/errors';
+// import { NotFoundError } from '../../src/core/errors'; // Not used in this file
 import { InventoryRecord } from '../../src/core/types';
 
 // Mock dependencies

@@ -14,8 +14,8 @@ vi.mock('../src/workers/sync.worker', () => ({
 }));
 
 describe('Bootstrap Integration', () => {
-  let server: any;
-  let mockSyncWorker: any;
+  let server: unknown;
+  let mockSyncWorker: unknown;
 
   beforeAll(async () => {
     server = app;

@@ -3,7 +3,7 @@ import request from 'supertest';
 import { app } from '../../src/app';
 
 describe('Inventory Routes API', () => {
-  let server: any;
+  let server: unknown;
 
   beforeAll(() => {
     server = app;

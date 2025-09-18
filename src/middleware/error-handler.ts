@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { logger } from '../core/logger';
 import { DomainError, ErrorFactory } from '../core/errors';
 
-export const errorHandler = (error: Error, req: Request, res: Response, _next: any) => {
+export const errorHandler = (error: Error, req: Request, res: Response) => {
   logger.error({ error, req: { id: req.id, method: req.method, url: req.url } }, 'Request error');
 
   if (error instanceof DomainError) {

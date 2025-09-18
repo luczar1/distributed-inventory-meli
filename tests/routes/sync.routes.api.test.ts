@@ -13,8 +13,8 @@ vi.mock('../../src/workers/sync.worker', () => ({
 }));
 
 describe('Sync Routes API', () => {
-  let server: any;
-  let mockSyncWorker: any;
+  let server: unknown;
+  let mockSyncWorker: unknown;
 
   beforeAll(async () => {
     server = app;
