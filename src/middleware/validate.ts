@@ -65,12 +65,14 @@ export const validateQuery = (schema: ZodSchema) => {
           value: 'received' in err ? err.received : undefined,
         }));
         
-        throw new ValidationError(
+        const validationError = new ValidationError(
           `Query validation failed: ${fieldErrors.map(e => `${e.field}: ${e.message}`).join(', ')}`,
           undefined,
           undefined,
           { fieldErrors }
         );
+        next(validationError);
+        return;
       }
       next(error);
     }
