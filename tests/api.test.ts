@@ -124,7 +124,7 @@ describe('API Integration Tests', () => {
       vi.mocked(eventLogRepository.append).mockResolvedValue();
       const response = await request(server)
         .post('/api/inventory/stores/STORE001/inventory/SKU123/reserve')
-        .send({ qty: 30 }).expect(200);
+        .send({ qty: 30 }).expect(201);
       expect(response.body.success).toBe(true);
       expect(response.body.newQuantity).toBe(70);
       expect(response.body.newVersion).toBe(2);

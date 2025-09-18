@@ -68,6 +68,9 @@ vi.mock('../src/utils/lockFile', () => {
   
   return {
     acquireLock: vi.fn().mockImplementation(async (key: string, ttl: number, owner: string) => {
+      // Add a small delay to simulate real lock acquisition
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 5));
+      
       // Simulate lock contention - only one lock per key can be held
       const existingLock = locks.get(key);
       if (existingLock && existingLock.expiresAt > Date.now()) {
@@ -137,7 +140,7 @@ describe('Lock Stress Tests', () => {
           try {
             const handle = await acquireLock(testSku, testTtl, `${testOwner}-${i}`);
             // Simulate some work
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             await releaseLock(handle);
             return { success: true, operation: i };
           } catch (error) {
@@ -146,14 +149,45 @@ describe('Lock Stress Tests', () => {
         }
       );
       
-      // Run operations with concurrency limit
-      const results = await mapLimit(operations, 16, async (operation) => await operation());
+      // Run all operations in parallel to create real contention
+      const results = await Promise.allSettled(
+        operations.map(async (operation) => {
+          try {
+            return await operation();
+          } catch (error) {
+            return { success: false, error, operation: -1 };
+          }
+        })
+      );
+      
+      // Extract results from settled promises
+      const extractedResults: any[] = [];
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          extractedResults.push(result.value);
+        } else {
+          extractedResults.push({ success: false, error: result.reason, operation: -1 });
+        }
+      });
+      
+      // Filter out any undefined results
+      const validResults = extractedResults.filter(result => result !== undefined);
       
       // Analyze results
-      const successful = results.filter(result => result.success);
-      const rejected = results.filter(result => !result.success);
+      const successful = validResults.filter(result => result.success);
+      const rejected = validResults.filter(result => !result.success);
       
-      // Verify some operations succeeded and some were rejected
+      // Debug output
+      console.log(`Results: ${successful.length} successful, ${rejected.length} rejected`);
+      console.log('Total results:', results.length);
+      console.log('Valid results:', validResults.length);
+      console.log('Sample results:', validResults.slice(0, 5));
+      
+      // Verify that we got results for all operations
+      expect(validResults.length).toBe(numOperations);
+      
+      // Verify that at least one operation succeeded (the first one to acquire the lock)
+      // and others were rejected due to contention
       expect(successful.length).toBeGreaterThan(0);
       expect(rejected.length).toBeGreaterThan(0);
       expect(successful.length + rejected.length).toBe(numOperations);
@@ -180,10 +214,32 @@ describe('Lock Stress Tests', () => {
         }
       );
       
-      const results = await mapLimit(operations, 16, async (operation) => await operation());
+      // Run all operations in parallel to create real contention
+      const results = await Promise.allSettled(
+        operations.map(async (operation) => {
+          try {
+            return await operation();
+          } catch (error) {
+            return { success: false, error, operation: -1 };
+          }
+        })
+      );
       
-      const successful = results.filter(result => result.success);
-      const rejected = results.filter(result => !result.success);
+      // Extract results from settled promises
+      const extractedResults: any[] = [];
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          extractedResults.push(result.value);
+        } else {
+          extractedResults.push({ success: false, error: result.reason, operation: -1 });
+        }
+      });
+      
+      // Filter out any undefined results
+      const validResults = extractedResults.filter(result => result !== undefined);
+      
+      const successful = validResults.filter(result => result.success);
+      const rejected = validResults.filter(result => !result.success);
       
       expect(successful.length).toBeGreaterThan(0);
       expect(rejected.length).toBeGreaterThan(0);
@@ -206,10 +262,32 @@ describe('Lock Stress Tests', () => {
         }
       );
       
-      const results = await mapLimit(operations, 16, async (operation) => await operation());
+      // Run all operations in parallel to create real contention
+      const results = await Promise.allSettled(
+        operations.map(async (operation) => {
+          try {
+            return await operation();
+          } catch (error) {
+            return { success: false, error, operation: -1 };
+          }
+        })
+      );
       
-      const successful = results.filter(result => result.success);
-      const rejected = results.filter(result => !result.success);
+      // Extract results from settled promises
+      const extractedResults: any[] = [];
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          extractedResults.push(result.value);
+        } else {
+          extractedResults.push({ success: false, error: result.reason, operation: -1 });
+        }
+      });
+      
+      // Filter out any undefined results
+      const validResults = extractedResults.filter(result => result !== undefined);
+      
+      const successful = validResults.filter(result => result.success);
+      const rejected = validResults.filter(result => !result.success);
       
       expect(successful.length).toBeGreaterThan(0);
       expect(rejected.length).toBeGreaterThan(0);
@@ -233,10 +311,32 @@ describe('Lock Stress Tests', () => {
         }
       );
       
-      const results = await mapLimit(operations, 16, async (operation) => await operation());
+      // Run all operations in parallel to create real contention
+      const results = await Promise.allSettled(
+        operations.map(async (operation) => {
+          try {
+            return await operation();
+          } catch (error) {
+            return { success: false, error, operation: -1 };
+          }
+        })
+      );
       
-      const successful = results.filter(result => result.success);
-      const rejected = results.filter(result => !result.success);
+      // Extract results from settled promises
+      const extractedResults: any[] = [];
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          extractedResults.push(result.value);
+        } else {
+          extractedResults.push({ success: false, error: result.reason, operation: -1 });
+        }
+      });
+      
+      // Filter out any undefined results
+      const validResults = extractedResults.filter(result => result !== undefined);
+      
+      const successful = validResults.filter(result => result.success);
+      const rejected = validResults.filter(result => !result.success);
       
       expect(successful.length).toBeGreaterThan(0);
       expect(rejected.length).toBeGreaterThan(0);

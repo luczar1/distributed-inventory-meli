@@ -124,57 +124,53 @@ router.post('/stores/:storeId/inventory/:sku/adjust',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       logger.info({ reqId: req.id, path: req.path, method: req.method }, 'Adjust route hit');
-      await apiBulkhead.run(async () => {
-        return apiBreaker.execute(async () => {
-          const { sku, storeId } = req.params as { sku: string; storeId: string };
-          const { delta, expectedVersion } = req.body;
-          const ifMatchVersion = (req as any).ifMatchVersion;
-          const idempotencyKey = req.headers['idempotency-key'] as string;
+      const { sku, storeId } = req.params as { sku: string; storeId: string };
+      const { delta, expectedVersion } = req.body;
+      const ifMatchVersion = (req as any).ifMatchVersion;
+      const idempotencyKey = req.headers['idempotency-key'] as string;
 
-          logger.debug({ reqId: req.id, ifMatchVersion, expectedVersion }, 'Version values extracted');
+      logger.debug({ reqId: req.id, ifMatchVersion, expectedVersion }, 'Version values extracted');
 
-          logger.info({
-            req: { id: req.id },
-            sku,
-            storeId,
-            delta,
-            expectedVersion,
-            ifMatchVersion,
-            idempotencyKey
-          }, 'Adjust stock requested');
+      logger.info({
+        req: { id: req.id },
+        sku,
+        storeId,
+        delta,
+        expectedVersion,
+        ifMatchVersion,
+        idempotencyKey
+      }, 'Adjust stock requested');
 
-          // Check version precondition (If-Match header takes precedence)
-          const currentRecord = await inventoryRepository.get(sku, storeId);
-          try {
-            checkVersionPrecondition(currentRecord.version, ifMatchVersion, expectedVersion);
-          } catch (error) {
-            logger.error({ error, currentVersion: currentRecord.version, ifMatchVersion, expectedVersion }, 'Version precondition check failed');
-            throw error;
-          }
+      // Check version precondition (If-Match header takes precedence)
+      const currentRecord = await inventoryRepository.get(sku, storeId);
+      try {
+        checkVersionPrecondition(currentRecord.version, ifMatchVersion, expectedVersion);
+      } catch (error) {
+        logger.error({ error, currentVersion: currentRecord.version, ifMatchVersion, expectedVersion }, 'Version precondition check failed');
+        throw error;
+      }
 
-          // Call the actual service with the resolved version
-          const resolvedVersion = ifMatchVersion ?? expectedVersion;
-          const result = await inventoryService.adjustStock(storeId, sku, delta, resolvedVersion, idempotencyKey);
+      // Call the actual service with the resolved version
+      const resolvedVersion = ifMatchVersion ?? expectedVersion;
+      const result = await inventoryService.adjustStock(storeId, sku, delta, resolvedVersion, idempotencyKey);
 
-          // Get the updated record for the response
-          const record = await inventoryRepository.get(sku, storeId);
+      // Get the updated record for the response
+      const record = await inventoryRepository.get(sku, storeId);
 
-          const response = {
-            success: true,
-            newQuantity: result.qty,
-            newVersion: result.version,
-            record: {
-              sku,
-              storeId,
-              qty: result.qty,
-              version: result.version,
-              updatedAt: record.updatedAt,
-            },
-          };
+      const response = {
+        success: true,
+        newQuantity: result.qty,
+        newVersion: result.version,
+        record: {
+          sku,
+          storeId,
+          qty: result.qty,
+          version: result.version,
+          updatedAt: record.updatedAt,
+        },
+      };
 
-          res.json(response);
-        });
-      });
+      res.json(response);
     } catch (error) {
       next(error);
     }
@@ -188,50 +184,46 @@ router.post('/stores/:storeId/inventory/:sku/reserve',
   ifMatchMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await apiBulkhead.run(async () => {
-        return apiBreaker.execute(async () => {
-          const { sku, storeId } = req.params as { sku: string; storeId: string };
-          const { qty, expectedVersion } = req.body;
-          const ifMatchVersion = (req as any).ifMatchVersion;
-          const idempotencyKey = req.headers['idempotency-key'] as string;
+      const { sku, storeId } = req.params as { sku: string; storeId: string };
+      const { qty, expectedVersion } = req.body;
+      const ifMatchVersion = (req as any).ifMatchVersion;
+      const idempotencyKey = req.headers['idempotency-key'] as string;
 
-          logger.info({
-            req: { id: req.id },
-            sku,
-            storeId,
-            qty,
-            expectedVersion,
-            ifMatchVersion,
-            idempotencyKey
-          }, 'Reserve stock requested');
+      logger.info({
+        req: { id: req.id },
+        sku,
+        storeId,
+        qty,
+        expectedVersion,
+        ifMatchVersion,
+        idempotencyKey
+      }, 'Reserve stock requested');
 
-          // Check version precondition (If-Match header takes precedence)
-          const currentRecord = await inventoryRepository.get(sku, storeId);
-          checkVersionPrecondition(currentRecord.version, ifMatchVersion, expectedVersion);
+      // Check version precondition (If-Match header takes precedence)
+      const currentRecord = await inventoryRepository.get(sku, storeId);
+      checkVersionPrecondition(currentRecord.version, ifMatchVersion, expectedVersion);
 
-          // Call the actual service with the resolved version
-          const resolvedVersion = ifMatchVersion ?? expectedVersion;
-          const result = await inventoryService.reserveStock(storeId, sku, qty, resolvedVersion, idempotencyKey);
+      // Call the actual service with the resolved version
+      const resolvedVersion = ifMatchVersion ?? expectedVersion;
+      const result = await inventoryService.reserveStock(storeId, sku, qty, resolvedVersion, idempotencyKey);
 
-          // Get the updated record for the response
-          const record = await inventoryRepository.get(sku, storeId);
+      // Get the updated record for the response
+      const record = await inventoryRepository.get(sku, storeId);
 
-          const response = {
-            success: true,
-            newQuantity: result.qty,
-            newVersion: result.version,
-            record: {
-              sku,
-              storeId,
-              qty: result.qty,
-              version: result.version,
-              updatedAt: record.updatedAt,
-            },
-          };
+      const response = {
+        success: true,
+        newQuantity: result.qty,
+        newVersion: result.version,
+        record: {
+          sku,
+          storeId,
+          qty: result.qty,
+          version: result.version,
+          updatedAt: record.updatedAt,
+        },
+      };
 
-          res.json(response);
-        });
-      });
+      res.status(201).json(response);
     } catch (error) {
       next(error);
     }

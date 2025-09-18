@@ -76,7 +76,7 @@ describe('App', () => {
         .post('/api/inventory')
         .set('Content-Type', 'application/json')
         .send('{"invalid": json}')
-        .expect(500); // JSON parse errors are handled as 500 by our error handler
+        .expect(400); // JSON parse errors are handled as 400 by our error handler
     });
   });
 

@@ -5,12 +5,9 @@ import { ValidationError } from '../core/errors';
 export const validateBody = (schema: ZodSchema) => {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
-      console.log('validateBody called with body:', JSON.stringify(req.body, null, 2));
       req.body = schema.parse(req.body);
-      console.log('validateBody passed');
       next();
     } catch (error) {
-      console.log('validateBody failed with error:', error);
       // Pass any error to the error handler
       next(error);
     }
