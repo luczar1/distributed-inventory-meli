@@ -1,6 +1,7 @@
 import { Router, NextFunction, Request, Response } from 'express';
 import { logger } from '../core/logger';
 import { SyncWorker } from '../workers/sync.worker';
+import { incrementSyncOperations } from '../utils/metrics';
 
 const router = Router();
 
@@ -15,6 +16,9 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     // For now, just simulate a successful sync
     // TODO: Implement actual sync logic
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate async work
+    
+    // Increment metrics
+    incrementSyncOperations();
     
     res.json({ 
       success: true, 

@@ -6,6 +6,7 @@ import { eventLogRepository, Event } from '../repositories/eventlog.repo';
 import { perKeyMutex } from '../utils/perKeyMutex';
 import { idempotencyStore } from '../utils/idempotency';
 import { logger } from '../core/logger';
+import { incrementReserveStock, incrementIdempotentHits, incrementConflicts } from '../utils/metrics';
 import { StockReservationResult } from './inventory.service.types';
 
 export class StockReservationService {
@@ -26,6 +27,7 @@ export class StockReservationService {
     const existingResult = await idempotencyStore.get<StockReservationResult>(key);
     if (existingResult) {
       logger.info({ key, sku, storeId }, 'Returning cached result for idempotency key');
+      incrementIdempotentHits();
       return existingResult;
     }
 
@@ -53,6 +55,7 @@ export class StockReservationService {
       
       // Check version if expected version is provided
       if (expectedVersion !== undefined && currentRecord.version !== expectedVersion) {
+        incrementConflicts();
         throw ConflictError.versionMismatch(sku, storeId, expectedVersion, currentRecord.version);
       }
 
@@ -99,6 +102,9 @@ export class StockReservationService {
 
       // Cache result for idempotency
       await idempotencyStore.set(idempotencyKey, result);
+
+      // Increment metrics
+      incrementReserveStock();
 
       logger.info({ sku, storeId, qty, newQty, version: updatedRecord.version }, 'Stock reserved successfully');
       return result;

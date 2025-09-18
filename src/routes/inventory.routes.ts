@@ -5,6 +5,7 @@ import { ValidationError } from '../core/errors';
 import { inventoryService } from '../services/inventory.service';
 import { syncWorker } from '../workers/sync.worker';
 import { validateBody, validateParams } from '../middleware/validate';
+import { incrementGetInventory } from '../utils/metrics';
 
 const router = Router();
 
@@ -40,6 +41,9 @@ router.get('/stores/:storeId/inventory/:sku',
         version: 1,
         updatedAt: new Date(),
       };
+      
+      // Increment metrics
+      incrementGetInventory();
       
       // Set ETag header with version
       res.set('ETag', `"${record.version}"`);
