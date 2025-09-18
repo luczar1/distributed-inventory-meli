@@ -1,0 +1,793 @@
+openapi: 3.0.3
+info:
+  title: Distributed Inventory System API
+  description: |
+    A distributed inventory system with optimistic concurrency control, 
+    per-key async mutex, and comprehensive resilience features.
+    
+    ## Key Features
+    - **Optimistic Concurrency**: Version-based conflict detection
+    - **Idempotency**: Safe retry with Idempotency-Key header
+    - **ETag Support**: If-Match header for version preconditions
+    - **Resilience**: Circuit breakers, bulkheads, rate limiting, load shedding
+    - **Observability**: Comprehensive metrics and health checks
+    
+    ## Authentication
+    No authentication required for this API.
+    
+    ## Rate Limiting
+    - Default: 100 requests/second with 200 burst capacity
+    - Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+    
+    ## Idempotency
+    Use `Idempotency-Key` header for safe retries. Same key returns cached result.
+    
+    ## Version Control
+    Use `If-Match` header with ETag value for optimistic concurrency control.
+  version: 1.0.0
+  contact:
+    name: Distributed Inventory System
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+
+paths:
+  # Health & Monitoring
+  /health:
+    get:
+      summary: Basic health check
+      description: Returns basic health status of the service
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: "healthy"
+                      timestamp:
+                        type: string
+                        format: date-time
+                      uptime:
+                        type: number
+                        example: 45.123456789
+
+  /health/liveness:
+    get:
+      summary: Liveness probe
+      description: Kubernetes liveness probe endpoint
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  uptime:
+                    type: number
+
+  /health/readiness:
+    get:
+      summary: Readiness probe
+      description: Kubernetes readiness probe with system health checks
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: true
+                  timestamp:
+                    type: string
+                    format: date-time
+                  breakers:
+                    type: object
+                    description: Circuit breaker status
+                  queueDepth:
+                    type: object
+                    properties:
+                      api:
+                        type: number
+                      sync:
+                        type: number
+                      filesystem:
+                        type: number
+        '503':
+          description: Service not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health/metrics:
+    get:
+      summary: Comprehensive metrics
+      description: Detailed system metrics including circuit breakers, bulkheads, and performance data
+      tags: [Health]
+      responses:
+        '200':
+          description: Metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      requests:
+                        type: number
+                        example: 150
+                      errors:
+                        type: number
+                        example: 2
+                      conflicts:
+                        type: number
+                        example: 1
+                      idempotentHits:
+                        type: number
+                        example: 5
+                      rateLimited:
+                        type: number
+                        example: 0
+                      shed:
+                        type: number
+                        example: 0
+                      breakerOpen:
+                        type: number
+                        example: 0
+                      fsRetries:
+                        type: number
+                        example: 3
+                      snapshots:
+                        type: number
+                        example: 1
+                      system:
+                        type: object
+                        properties:
+                          uptime:
+                            type: number
+                          memoryUsage:
+                            type: object
+                          cpuUsage:
+                            type: object
+                          timestamp:
+                            type: string
+                            format: date-time
+                      circuitBreakers:
+                        type: object
+                      bulkheads:
+                        type: object
+                      loadShedding:
+                        type: object
+                      rateLimiter:
+                        type: object
+        '500':
+          description: Failed to get metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Inventory Management
+  /inventory/stores/{storeId}/inventory/{sku}:
+    get:
+      summary: Get inventory record
+      description: Retrieve current inventory record for a specific SKU in a store
+      tags: [Inventory]
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+          example: "STORE001"
+        - name: sku
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+          example: "SKU123"
+      responses:
+        '200':
+          description: Inventory record retrieved successfully
+          headers:
+            ETag:
+              description: Version number for optimistic concurrency
+              schema:
+                type: string
+                example: "3"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryRecord'
+        '404':
+          description: Inventory record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Create inventory record
+      description: Create a new inventory record for a SKU in a store
+      tags: [Inventory]
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+          example: "STORE001"
+        - name: sku
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+          example: "SKU123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku, storeId, initialQuantity]
+              properties:
+                sku:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                  example: "SKU123"
+                storeId:
+                  type: string
+                  minLength: 1
+                  maxLength: 20
+                  example: "STORE001"
+                initialQuantity:
+                  type: integer
+                  minimum: 0
+                  example: 100
+      responses:
+        '201':
+          description: Inventory record created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InventoryRecord'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /inventory/stores/{storeId}/inventory/{sku}/adjust:
+    post:
+      summary: Adjust stock quantity
+      description: Increase or decrease stock quantity for a SKU in a store
+      tags: [Inventory]
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+          example: "STORE001"
+        - name: sku
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+          example: "SKU123"
+        - name: If-Match
+          in: header
+          description: ETag value for optimistic concurrency control
+          schema:
+            type: string
+            example: "3"
+        - name: Idempotency-Key
+          in: header
+          description: Key for idempotent operations
+          schema:
+            type: string
+            example: "adjust-123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delta]
+              properties:
+                delta:
+                  type: integer
+                  description: Quantity change (positive for increase, negative for decrease)
+                  example: 50
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                  description: Expected version for optimistic concurrency (alternative to If-Match header)
+                  example: 3
+      responses:
+        '200':
+          description: Stock adjusted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  newQuantity:
+                    type: integer
+                    example: 150
+                  newVersion:
+                    type: integer
+                    example: 4
+                  record:
+                    $ref: '#/components/schemas/InventoryRecord'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Inventory record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Insufficient stock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable (load shedding or circuit breaker)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /inventory/stores/{storeId}/inventory/{sku}/reserve:
+    post:
+      summary: Reserve stock
+      description: Reserve a specific quantity of stock for a SKU in a store
+      tags: [Inventory]
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+          example: "STORE001"
+        - name: sku
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+          example: "SKU123"
+        - name: If-Match
+          in: header
+          description: ETag value for optimistic concurrency control
+          schema:
+            type: string
+            example: "3"
+        - name: Idempotency-Key
+          in: header
+          description: Key for idempotent operations
+          schema:
+            type: string
+            example: "reserve-123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qty]
+              properties:
+                qty:
+                  type: integer
+                  minimum: 0
+                  description: Quantity to reserve
+                  example: 25
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                  description: Expected version for optimistic concurrency (alternative to If-Match header)
+                  example: 3
+      responses:
+        '200':
+          description: Stock reserved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  newQuantity:
+                    type: integer
+                    example: 75
+                  newVersion:
+                    type: integer
+                    example: 4
+                  record:
+                    $ref: '#/components/schemas/InventoryRecord'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Inventory record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Insufficient stock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable (load shedding or circuit breaker)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Sync Operations
+  /sync:
+    post:
+      summary: Manual sync trigger
+      description: Trigger a manual sync operation to process pending events
+      tags: [Sync]
+      responses:
+        '200':
+          description: Sync completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Sync completed successfully"
+        '500':
+          description: Sync failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /sync/status:
+    get:
+      summary: Get sync worker status
+      description: Retrieve current status of the sync worker
+      tags: [Sync]
+      responses:
+        '200':
+          description: Sync status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      isRunning:
+                        type: boolean
+                        example: true
+                      lastProcessedEventId:
+                        type: string
+                        example: "event-123"
+
+  /sync/start:
+    post:
+      summary: Start periodic sync
+      description: Start the sync worker with periodic processing
+      tags: [Sync]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                intervalMs:
+                  type: integer
+                  minimum: 1000
+                  default: 15000
+                  description: Sync interval in milliseconds
+                  example: 10000
+      responses:
+        '200':
+          description: Sync worker started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Sync worker started with interval 10000ms"
+
+  /sync/stop:
+    post:
+      summary: Stop periodic sync
+      description: Stop the sync worker
+      tags: [Sync]
+      responses:
+        '200':
+          description: Sync worker stopped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Sync worker stopped"
+
+  # Metrics
+  /metrics:
+    get:
+      summary: Get system metrics
+      description: Retrieve current system metrics and performance data
+      tags: [Metrics]
+      responses:
+        '200':
+          description: Metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      requests:
+                        type: number
+                        example: 150
+                      errors:
+                        type: number
+                        example: 2
+                      conflicts:
+                        type: number
+                        example: 1
+                      idempotentHits:
+                        type: number
+                        example: 5
+                      adjustStock:
+                        type: number
+                        example: 10
+                      reserveStock:
+                        type: number
+                        example: 5
+                      getInventory:
+                        type: number
+                        example: 20
+                      syncOperations:
+                        type: number
+                        example: 3
+                      timestamp:
+                        type: string
+                        format: date-time
+                      uptime:
+                        type: number
+                        example: 45.123456789
+                      rateLimiter:
+                        type: object
+                      loadShedding:
+                        type: object
+                      circuitBreakers:
+                        type: object
+                      bulkheads:
+                        type: object
+
+  /metrics/reset:
+    post:
+      summary: Reset metrics
+      description: Reset all system metrics (for testing purposes)
+      tags: [Metrics]
+      responses:
+        '200':
+          description: Metrics reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Metrics reset successfully"
+
+components:
+  schemas:
+    InventoryRecord:
+      type: object
+      required: [sku, storeId, qty, version, createdAt, updatedAt]
+      properties:
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: "SKU123"
+        storeId:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: "STORE001"
+        qty:
+          type: integer
+          minimum: 0
+          description: Current quantity in stock
+          example: 100
+        version:
+          type: integer
+          minimum: 1
+          description: Version number for optimistic concurrency
+          example: 3
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-09-18T17:16:49.607Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-09-18T17:16:49.617Z"
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required: [name, message, code, statusCode, timestamp]
+          properties:
+            name:
+              type: string
+              example: "ConflictError"
+            message:
+              type: string
+              example: "Version mismatch for SKU SKU123 in store STORE001. Expected: 1, Actual: 3"
+            code:
+              type: string
+              example: "CONFLICT_ERROR"
+            statusCode:
+              type: integer
+              example: 409
+            timestamp:
+              type: string
+              format: date-time
+              example: "2025-09-18T17:16:49.647Z"
+            details:
+              type: object
+              description: Additional error context
+
+  securitySchemes:
+    IdempotencyKey:
+      type: apiKey
+      in: header
+      name: Idempotency-Key
+      description: Key for idempotent operations
+
+    IfMatch:
+      type: apiKey
+      in: header
+      name: If-Match
+      description: ETag value for optimistic concurrency control
+
+tags:
+  - name: Health
+    description: Health check and monitoring endpoints
+  - name: Inventory
+    description: Inventory management operations
+  - name: Sync
+    description: Synchronization operations
+  - name: Metrics
+    description: System metrics and monitoring
