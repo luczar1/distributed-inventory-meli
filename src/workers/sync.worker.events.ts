@@ -4,6 +4,33 @@ import { logger } from '../core/logger';
 
 export class EventProcessor {
   /**
+   * Process a single event
+   */
+  async processEvent(event: Event, inventoryManager: any): Promise<void> {
+    const { sku, storeId } = event.payload as { sku: string; storeId: string };
+    
+    if (event.type === 'stock_adjusted') {
+      const { newQty, newVersion } = event.payload as { newQty: number; newVersion: number };
+      await inventoryManager.updateCentralInventory(storeId, sku, {
+        sku,
+        storeId,
+        qty: newQty,
+        version: newVersion,
+      });
+    } else if (event.type === 'stock_reserved') {
+      const { newQty, newVersion } = event.payload as { newQty: number; newVersion: number };
+      await inventoryManager.updateCentralInventory(storeId, sku, {
+        sku,
+        storeId,
+        qty: newQty,
+        version: newVersion,
+      });
+    }
+    
+    logger.debug({ eventId: event.id, type: event.type, sku, storeId }, 'Event processed');
+  }
+
+  /**
    * Get events that haven't been processed yet
    */
   getNewEvents(events: Event[], lastProcessedEventId?: string): Event[] {

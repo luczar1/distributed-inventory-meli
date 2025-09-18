@@ -6,6 +6,7 @@ import { Event } from '../../src/repositories/eventlog.repo';
 vi.mock('../../src/repositories/eventlog.repo', () => ({
   eventLogRepository: {
     getAll: vi.fn(),
+    getAfterSequence: vi.fn(),
   },
 }));
 
@@ -173,8 +174,8 @@ describe('SyncWorker - Event Processing', () => {
 
       await syncWorker.syncOnce();
 
-      // Second sync with same events
-      vi.mocked(eventLogRepository.getAll).mockResolvedValue(mockEvents);
+      // Second sync with same events - mock getAfterSequence to return empty array
+      vi.mocked(eventLogRepository.getAfterSequence).mockResolvedValue([]);
       vi.mocked(writeJsonFile).mockClear();
 
       await syncWorker.syncOnce();
@@ -210,7 +211,8 @@ describe('SyncWorker - Event Processing', () => {
         ts: 1640995320000,
       };
 
-      vi.mocked(eventLogRepository.getAll).mockResolvedValue([...mockEvents, newEvent]);
+      // Mock getAfterSequence to return the new event
+      vi.mocked(eventLogRepository.getAfterSequence).mockResolvedValue([newEvent]);
       vi.mocked(writeJsonFile).mockClear();
 
       await syncWorker.syncOnce();
