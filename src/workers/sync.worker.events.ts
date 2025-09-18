@@ -6,7 +6,7 @@ export class EventProcessor {
   /**
    * Process a single event
    */
-  async processEvent(event: Event, inventoryManager: any): Promise<void> {
+  async processEvent(event: Event, inventoryManager: { updateCentralInventory: (storeId: string, sku: string, record: InventoryRecord) => Promise<void> }): Promise<void> {
     const { sku, storeId } = event.payload as { sku: string; storeId: string };
     
     if (event.type === 'stock_adjusted') {

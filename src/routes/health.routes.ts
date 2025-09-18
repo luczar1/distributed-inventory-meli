@@ -6,6 +6,17 @@ import { getBulkheadMetrics } from '../utils/bulkhead';
 import { getLoadSheddingStats } from '../middleware/loadShedding';
 import { getRateLimiterStats } from '../middleware/rateLimiter';
 
+interface CircuitBreakerInfo {
+  state: string;
+  failures: number;
+  successes: number;
+}
+
+interface BulkheadInfo {
+  queued: number;
+  queueSize: number;
+}
+
 const router = Router();
 
 // Basic health check
@@ -42,12 +53,12 @@ router.get('/readiness', (req, res) => {
     
     // Check if any critical circuit breakers are open
     const criticalBreakersOpen = Object.values(circuitBreakerMetrics).some(
-      (breaker: any) => breaker.state === 'open'
+      (breaker: CircuitBreakerInfo) => breaker.state === 'open'
     );
     
     // Check if queues are over threshold
     const queueOverThreshold = Object.values(bulkheadMetrics).some(
-      (bulkhead: any) => bulkhead.queued > bulkhead.queueSize * 0.8 // 80% threshold
+      (bulkhead: BulkheadInfo) => bulkhead.queued > bulkhead.queueSize * 0.8 // 80% threshold
     );
     
     // Check load shedding status
@@ -111,7 +122,7 @@ router.get('/metrics', (req, res) => {
       
       // Circuit breaker metrics
       breakerOpen: Object.values(circuitBreakerMetrics).filter(
-        (breaker: any) => breaker.state === 'open'
+        (breaker: CircuitBreakerInfo) => breaker.state === 'open'
       ).length,
       
       // File system retry metrics
