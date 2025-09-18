@@ -1,105 +1,139 @@
 import { promises as fs } from 'fs';
+import { join, dirname } from 'path';
+import { randomUUID } from 'crypto';
 import { logger } from '../core/logger';
-
-// Retry configuration
-const MAX_RETRIES = 3;
-const BASE_DELAY = 100; // 100ms base delay
-
-// Exponential backoff delay calculation
-function getDelay(attempt: number): number {
-  return BASE_DELAY * Math.pow(2, attempt - 1);
-}
+import { config } from '../core/config';
 
 // Sleep utility
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Safe JSON file read with retry
-export async function readJsonFile<T = unknown>(filePath: string): Promise<T> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const data = await fs.readFile(filePath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      lastError = error as Error;
-      logger.warn({ 
-        filePath, 
-        attempt, 
-        error: lastError.message 
-      }, 'File read attempt failed');
-      
-      if (attempt < MAX_RETRIES) {
-        const delay = getDelay(attempt);
-        logger.info({ filePath, attempt, delay }, 'Retrying file read');
-        await sleep(delay);
-      }
-    }
-  }
-  
-  logger.error({ filePath, attempts: MAX_RETRIES }, 'File read failed after all retries');
-  throw new Error(`Failed to read file ${filePath} after ${MAX_RETRIES} attempts: ${lastError?.message}`);
+// Exponential backoff with jitter
+function getDelayWithJitter(attempt: number): number {
+  const baseDelay = config.RETRY_BASE_MS * Math.pow(2, attempt - 1);
+  const jitter = Math.random() * 0.1 * baseDelay; // 10% jitter
+  return Math.floor(baseDelay + jitter);
 }
 
-// Safe JSON file write with retry
-export async function writeJsonFile<T = unknown>(filePath: string, data: T): Promise<void> {
+// Generic retry wrapper with exponential backoff and jitter
+export async function withFsRetry<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+  context: Record<string, unknown> = {}
+): Promise<T> {
   let lastError: Error | null = null;
-  const jsonData = JSON.stringify(data, null, 2);
   
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= config.RETRY_TIMES + 1; attempt++) {
     try {
-      await fs.writeFile(filePath, jsonData, 'utf8');
-      logger.debug({ filePath }, 'File written successfully');
-      return;
+      return await operation();
     } catch (error) {
       lastError = error as Error;
       logger.warn({ 
-        filePath, 
+        ...context,
+        operationName,
         attempt, 
         error: lastError.message 
-      }, 'File write attempt failed');
+      }, `${operationName} attempt failed`);
       
-      if (attempt < MAX_RETRIES) {
-        const delay = getDelay(attempt);
-        logger.info({ filePath, attempt, delay }, 'Retrying file write');
+      if (attempt <= config.RETRY_TIMES) {
+        const delay = getDelayWithJitter(attempt);
+        logger.info({ ...context, operationName, attempt, delay }, `Retrying ${operationName}`);
         await sleep(delay);
       }
     }
   }
   
-  logger.error({ filePath, attempts: MAX_RETRIES }, 'File write failed after all retries');
-  throw new Error(`Failed to write file ${filePath} after ${MAX_RETRIES} attempts: ${lastError?.message}`);
+  logger.error({ ...context, operationName, attempts: config.RETRY_TIMES + 1 }, `${operationName} failed after all retries`);
+  throw new Error(`${operationName} failed after ${config.RETRY_TIMES + 1} attempts: ${lastError?.message}`);
+}
+
+// Safe JSON file read with retry
+export async function readJsonFile<T = unknown>(filePath: string): Promise<T> {
+  return withFsRetry(
+    async () => {
+      const data = await fs.readFile(filePath, 'utf8');
+      return JSON.parse(data);
+    },
+    'File read',
+    { filePath }
+  );
+}
+
+// Atomic JSON file write with retry
+export async function writeJsonAtomic<T = unknown>(filePath: string, data: T): Promise<void> {
+  return withFsRetry(
+    async () => {
+      const jsonData = JSON.stringify(data, null, 2);
+      const tempPath = join(dirname(filePath), `.${randomUUID()}.tmp`);
+      
+      try {
+        // Write to temporary file first
+        await fs.writeFile(tempPath, jsonData, 'utf8');
+        
+        // Atomic rename (this is atomic on most filesystems)
+        await fs.rename(tempPath, filePath);
+        
+        logger.debug({ filePath }, 'File written atomically');
+      } catch (error) {
+        // Clean up temp file if it exists
+        try {
+          await fs.unlink(tempPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        throw error;
+      }
+    },
+    'Atomic file write',
+    { filePath }
+  );
+}
+
+// Safe JSON file write with retry (legacy, use writeJsonAtomic for new code)
+export async function writeJsonFile<T = unknown>(filePath: string, data: T): Promise<void> {
+  return withFsRetry(
+    async () => {
+      const jsonData = JSON.stringify(data, null, 2);
+      await fs.writeFile(filePath, jsonData, 'utf8');
+      logger.debug({ filePath }, 'File written successfully');
+    },
+    'File write',
+    { filePath }
+  );
 }
 
 // Safe file exists check
 export async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+  return withFsRetry(
+    async () => {
+      await fs.access(filePath);
+      return true;
+    },
+    'File exists check',
+    { filePath }
+  ).catch(() => false);
 }
 
 // Safe directory creation
 export async function ensureDir(dirPath: string): Promise<void> {
-  try {
-    await fs.mkdir(dirPath, { recursive: true });
-  } catch (error) {
-    logger.error({ dirPath, error }, 'Failed to create directory');
-    throw error;
-  }
+  return withFsRetry(
+    async () => {
+      await fs.mkdir(dirPath, { recursive: true });
+    },
+    'Directory creation',
+    { dirPath }
+  );
 }
 
 // Safe file deletion
 export async function deleteFile(filePath: string): Promise<void> {
-  try {
-    await fs.unlink(filePath);
-    logger.debug({ filePath }, 'File deleted successfully');
-  } catch (error) {
-    logger.error({ filePath, error }, 'Failed to delete file');
-    throw error;
-  }
+  return withFsRetry(
+    async () => {
+      await fs.unlink(filePath);
+      logger.debug({ filePath }, 'File deleted successfully');
+    },
+    'File deletion',
+    { filePath }
+  );
 }

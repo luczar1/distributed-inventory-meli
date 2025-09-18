@@ -19,6 +19,14 @@ vi.mock('fs', () => ({
   },
 }));
 
+// Mock config for faster tests
+vi.mock('../../src/core/config', () => ({
+  config: {
+    RETRY_BASE_MS: 10,
+    RETRY_TIMES: 2,
+  },
+}));
+
 describe('fsSafe - Basic Operations', () => {
   const mockFs = fs as unknown as {
     readFile: ReturnType<typeof vi.fn>;
@@ -49,7 +57,7 @@ describe('fsSafe - Basic Operations', () => {
       mockFs.readFile.mockResolvedValue('invalid json');
 
       await expect(readJsonFile(filePath)).rejects.toThrow();
-    });
+    }, 10000);
   });
 
   describe('writeJsonFile', () => {
@@ -97,7 +105,7 @@ describe('fsSafe - Basic Operations', () => {
 
       expect(exists).toBe(false);
       expect(mockFs.access).toHaveBeenCalledWith(filePath);
-    });
+    }, 10000);
   });
 
   describe('ensureDir', () => {
@@ -116,7 +124,7 @@ describe('fsSafe - Basic Operations', () => {
       mockFs.mkdir.mockRejectedValue(error);
 
       await expect(ensureDir(dirPath)).rejects.toThrow('Permission denied');
-    });
+    }, 10000);
   });
 
   describe('deleteFile', () => {
@@ -135,6 +143,6 @@ describe('fsSafe - Basic Operations', () => {
       mockFs.unlink.mockRejectedValue(error);
 
       await expect(deleteFile(filePath)).rejects.toThrow('File not found');
-    });
+    }, 10000);
   });
 });
