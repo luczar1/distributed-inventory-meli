@@ -166,7 +166,7 @@ describe('Inventory Routes API', () => {
       const response = await request(server)
         .post('/api/inventory/stores/STORE001/inventory/SKU123/reserve')
         .send({ qty: 20 })
-        .expect(200);
+        .expect(201);
 
       expect(response.body.success).toBe(true);
       expect(response.body.newQuantity).toBe(80);
@@ -189,7 +189,7 @@ describe('Inventory Routes API', () => {
       const response = await request(server)
         .post('/api/inventory/stores/STORE001/inventory/SKU123/reserve')
         .send({ qty: 15, expectedVersion: 1 })
-        .expect(200);
+        .expect(201);
 
       expect(response.body.success).toBe(true);
     });

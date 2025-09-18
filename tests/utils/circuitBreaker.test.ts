@@ -14,6 +14,7 @@ describe('CircuitBreaker', () => {
     });
     mockOperation = vi.fn();
     vi.clearAllMocks();
+    mockOperation.mockClear();
   });
 
   describe('Closed State', () => {
@@ -65,6 +66,8 @@ describe('CircuitBreaker', () => {
     });
 
     it('should reject operations immediately without executing them', async () => {
+      // Clear any previous calls from setup
+      mockOperation.mockClear();
       mockOperation.mockResolvedValue('success');
       
       await expect(circuitBreaker.execute(mockOperation)).rejects.toThrow('Circuit breaker test is open');
@@ -77,6 +80,8 @@ describe('CircuitBreaker', () => {
       // Wait for cooldown period
       await new Promise(resolve => setTimeout(resolve, 1100));
       
+      // Clear any previous calls from setup
+      mockOperation.mockClear();
       mockOperation.mockResolvedValue('success');
       
       const result = await circuitBreaker.execute(mockOperation);
@@ -88,6 +93,14 @@ describe('CircuitBreaker', () => {
 
   describe('Half-Open State', () => {
     beforeEach(async () => {
+      // Create a fresh circuit breaker for each test
+      circuitBreaker = new CircuitBreaker({
+        name: 'test',
+        failureThreshold: 2, // 2 failures to open
+        cooldownMs: 1000,
+        timeoutMs: 5000,
+      });
+      
       // Force circuit breaker to open state
       mockOperation.mockRejectedValue(new Error('failure'));
       for (let i = 0; i < 2; i++) {
@@ -100,6 +113,9 @@ describe('CircuitBreaker', () => {
       
       // Wait for cooldown to enter half-open state
       await new Promise(resolve => setTimeout(resolve, 1100));
+      
+      // Clear the mock to start fresh for the actual test
+      mockOperation.mockClear();
     });
 
     it('should allow one probe operation', async () => {

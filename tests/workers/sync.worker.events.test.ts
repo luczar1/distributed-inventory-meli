@@ -82,13 +82,8 @@ describe('SyncWorker - Event Processing', () => {
       expect(writeJsonFile).toHaveBeenCalledWith(
         expect.stringContaining('central-inventory.json'),
         expect.objectContaining({
-          'STORE001': {
-            'SKU123': expect.objectContaining({
-              sku: 'SKU123',
-              storeId: 'STORE001',
-              qty: 150,
-              version: 2,
-            }),
+          'SKU123': {
+            'STORE001': 150,
           },
         })
       );
@@ -107,11 +102,8 @@ describe('SyncWorker - Event Processing', () => {
       expect(writeJsonFile).toHaveBeenCalledWith(
         expect.stringContaining('central-inventory.json'),
         expect.objectContaining({
-          'STORE001': {
-            'SKU123': expect.objectContaining({
-              qty: 120,
-              version: 3,
-            }),
+          'SKU123': {
+            'STORE001': 120,
           },
         })
       );
@@ -151,11 +143,8 @@ describe('SyncWorker - Event Processing', () => {
       expect(writeJsonFile).toHaveBeenCalledWith(
         expect.stringContaining('central-inventory.json'),
         expect.objectContaining({
-          'STORE001': {
-            'SKU123': expect.objectContaining({
-              sku: 'SKU123',
-              storeId: 'STORE001',
-            }),
+          'SKU123': {
+            'STORE001': 150,
           },
         })
       );

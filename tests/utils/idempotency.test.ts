@@ -119,7 +119,13 @@ describe('IdempotencyStore', () => {
   describe('getStats', () => {
     it('should return stats for empty store', () => {
       const stats = store.getStats();
-      expect(stats).toEqual({ total: 0, expired: 0 });
+      expect(stats).toEqual({ 
+        total: 0, 
+        expired: 0, 
+        pending: 0, 
+        completed: 0, 
+        failed: 0 
+      });
     });
 
     it('should return stats for store with entries', async () => {

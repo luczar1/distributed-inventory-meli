@@ -3,11 +3,20 @@ import request from 'supertest';
 import { app } from '../../src/app';
 import { inventoryRepository } from '../../src/repositories/inventory.repo';
 import { inventoryService } from '../../src/services/inventory.service';
+import { eventLogRepository } from '../../src/repositories/eventlog.repo';
+import { idempotencyStore } from '../../src/utils/idempotency';
 import { ConflictError } from '../../src/core/errors';
 
 // Mock dependencies
 vi.mock('../../src/repositories/inventory.repo');
 vi.mock('../../src/services/inventory.service');
+vi.mock('../../src/repositories/eventlog.repo');
+vi.mock('../../src/utils/idempotency');
+vi.mock('../../src/utils/perKeyMutex', () => ({
+  perKeyMutex: {
+    acquire: vi.fn((key, fn) => fn()),
+  },
+}));
 vi.mock('../../src/utils/circuitBreaker', () => ({
   apiBreaker: {
     execute: vi.fn((fn) => fn()),
@@ -18,13 +27,45 @@ vi.mock('../../src/utils/bulkhead', () => ({
     run: vi.fn((fn) => fn()),
   },
 }));
+vi.mock('../../src/utils/metrics', () => ({
+  incrementAdjustStock: vi.fn(),
+  incrementReserveStock: vi.fn(),
+  incrementIdempotentHits: vi.fn(),
+  incrementConflicts: vi.fn(),
+  incrementLockAcquired: vi.fn(),
+  incrementLockContended: vi.fn(),
+  incrementRequests: vi.fn(),
+  incrementErrors: vi.fn(),
+  incrementRateLimited: vi.fn(),
+  incrementShed: vi.fn(),
+  incrementBreakerOpen: vi.fn(),
+  incrementFsRetries: vi.fn(),
+  incrementSnapshots: vi.fn(),
+  incrementLockStolen: vi.fn(),
+  incrementLockExpired: vi.fn(),
+  incrementLockLost: vi.fn(),
+  incrementLockReleaseFailures: vi.fn(),
+}));
+vi.mock('../../src/utils/lockFile', () => ({
+  acquireLock: vi.fn(),
+  releaseLock: vi.fn(),
+}));
 
 const mockInventoryRepository = vi.mocked(inventoryRepository);
 const mockInventoryService = vi.mocked(inventoryService);
+const mockEventLogRepository = vi.mocked(eventLogRepository);
+const mockIdempotencyStore = vi.mocked(idempotencyStore);
 
 describe('Inventory Routes - If-Match Header Support', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Mock idempotency store to not cache results
+    mockIdempotencyStore.get.mockResolvedValue(null);
+    mockIdempotencyStore.set.mockResolvedValue(undefined);
+    
+    // Mock event log repository
+    mockEventLogRepository.append.mockResolvedValue();
   });
 
   afterEach(() => {

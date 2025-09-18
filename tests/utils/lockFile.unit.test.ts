@@ -250,7 +250,7 @@ describe('LockFile Utility', () => {
     });
 
     it('should force release lock without owner verification', async () => {
-      await forceReleaseLock(handle);
+      await forceReleaseLock(testKey);
       
       // Lock should no longer exist
       const isLockedResult = await isLocked(testKey);

@@ -207,6 +207,96 @@ export class EventLogRepository {
   }> {
     return this.utils.getStats();
   }
+
+  /**
+   * Record failure for an event
+   */
+  async recordFailure(eventId: string, failureReason: string): Promise<void> {
+    try {
+      await this.updateRetryInfo(eventId, 0, failureReason);
+    } catch (error) {
+      logger.error({ error, eventId }, 'Failed to record failure');
+      throw error;
+    }
+  }
+
+  /**
+   * Get failed events that haven't exceeded max retries
+   */
+  async getFailedEvents(maxRetries: number = 3): Promise<Event[]> {
+    try {
+      const data = await this.utils.loadData();
+      return data.events.filter(event => 
+        event.retryCount !== undefined && 
+        event.retryCount < maxRetries
+      );
+    } catch (error) {
+      logger.error({ error }, 'Failed to get failed events');
+      throw error;
+    }
+  }
+
+  /**
+   * Move event to dead letter queue
+   */
+  async moveToDeadLetter(eventId: string, finalFailureReason: string): Promise<void> {
+    try {
+      await this.moveToDLQ(eventId, finalFailureReason);
+    } catch (error) {
+      logger.error({ error, eventId }, 'Failed to move event to dead letter queue');
+      throw error;
+    }
+  }
+
+  /**
+   * Get dead letter events
+   */
+  async getDeadLetterEvents(): Promise<any[]> {
+    try {
+      return await deadLetterQueue.getDLQEvents();
+    } catch (error) {
+      logger.error({ error }, 'Failed to get dead letter events');
+      throw error;
+    }
+  }
+
+  /**
+   * Clear dead letter queue
+   */
+  async clearDeadLetterQueue(): Promise<void> {
+    try {
+      await deadLetterQueue.clearDLQ();
+    } catch (error) {
+      logger.error({ error }, 'Failed to clear dead letter queue');
+      throw error;
+    }
+  }
+
+  /**
+   * Get event count
+   */
+  async getCount(): Promise<number> {
+    try {
+      const data = await this.utils.loadData();
+      return data.events.length;
+    } catch (error) {
+      logger.error({ error }, 'Failed to get event count');
+      throw error;
+    }
+  }
+
+  /**
+   * Get paginated events
+   */
+  async getPaginated(offset: number, limit: number): Promise<Event[]> {
+    try {
+      const data = await this.utils.loadData();
+      return data.events.slice(offset, offset + limit);
+    } catch (error) {
+      logger.error({ error }, 'Failed to get paginated events');
+      throw error;
+    }
+  }
 }
 
 export const eventLogRepository = new EventLogRepository();

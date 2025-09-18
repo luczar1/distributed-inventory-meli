@@ -16,6 +16,15 @@ describe('App', () => {
 
   describe('Inventory endpoints', () => {
     it('should respond to inventory GET', async () => {
+      // First create the inventory record
+      await request(app)
+        .post('/api/inventory')
+        .send({
+          sku: 'SKU123',
+          storeId: 'STORE001',
+          initialQuantity: 100,
+        });
+
       const response = await request(app)
         .get('/api/inventory/SKU123/STORE001')
         .expect(200);

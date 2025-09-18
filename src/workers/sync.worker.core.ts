@@ -112,7 +112,8 @@ export class SyncWorker {
           this.stateManager.setLastProcessedEventId(event.id);
         } catch (error) {
           logger.error({ error, eventId: event.id }, 'Failed to process event');
-          // Continue processing other events
+          // Re-throw the error to fail the entire sync operation
+          throw error;
         }
       }
 

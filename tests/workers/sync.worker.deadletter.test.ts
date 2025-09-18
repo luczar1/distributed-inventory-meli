@@ -7,7 +7,11 @@ import { readJsonFile, writeJsonFile, ensureDir } from '../../src/utils/fsSafe';
 
 // Mock dependencies
 vi.mock('../../src/repositories/eventlog.repo');
-vi.mock('../../src/workers/sync.worker.events');
+vi.mock('../../src/workers/sync.worker.events', () => ({
+  EventProcessor: vi.fn().mockImplementation(() => ({
+    processEvent: vi.fn(),
+  })),
+}));
 vi.mock('../../src/ops/snapshotter');
 vi.mock('../../src/utils/fsSafe', () => ({
   readJsonFile: vi.fn(),
@@ -17,6 +21,9 @@ vi.mock('../../src/utils/fsSafe', () => ({
 vi.mock('../../src/utils/circuitBreaker', () => ({
   syncWorkerBreaker: {
     execute: vi.fn((fn) => fn()),
+    isOpen: vi.fn(() => false),
+    recordSuccess: vi.fn(),
+    recordFailure: vi.fn(),
   },
 }));
 vi.mock('../../src/utils/bulkhead', () => ({
@@ -34,17 +41,14 @@ describe('SyncWorker - Dead Letter Queue', () => {
   let mockEventProcessorInstance: any;
 
   beforeEach(() => {
-    syncWorker = new SyncWorker();
+    // Create a fresh mock instance for each test
     mockEventProcessorInstance = {
-      getNewEvents: vi.fn(),
-      applyEventToCentral: vi.fn(),
+      processEvent: vi.fn(),
     };
     mockEventProcessor.mockImplementation(() => mockEventProcessorInstance);
-    vi.clearAllMocks();
     
-    // Reset the mock instance for each test
-    mockEventProcessorInstance.getNewEvents.mockClear();
-    mockEventProcessorInstance.applyEventToCentral.mockClear();
+    syncWorker = new SyncWorker();
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -78,10 +82,9 @@ describe('SyncWorker - Dead Letter Queue', () => {
       ];
 
       mockEventLogRepository.getAll.mockResolvedValue(events);
-      mockEventProcessorInstance.getNewEvents.mockReturnValue(events);
       
       // First event succeeds, second fails, third succeeds
-      mockEventProcessorInstance.applyEventToCentral
+      mockEventProcessorInstance.processEvent
         .mockResolvedValueOnce(undefined) // event-1 succeeds
         .mockRejectedValueOnce(new Error('Processing failed')) // event-2 fails
         .mockResolvedValueOnce(undefined); // event-3 succeeds
@@ -102,7 +105,7 @@ describe('SyncWorker - Dead Letter Queue', () => {
       await syncWorker.syncOnce();
 
       // Should have processed all events
-      expect(mockEventProcessorInstance.applyEventToCentral).toHaveBeenCalledTimes(3);
+      expect(mockEventProcessorInstance.processEvent).toHaveBeenCalledTimes(3);
       
       // Should have recorded failure for event-2
       expect(mockEventLogRepository.recordFailure).toHaveBeenCalledWith('event-2', 'Processing failed');
@@ -131,10 +134,9 @@ describe('SyncWorker - Dead Letter Queue', () => {
       ];
 
       mockEventLogRepository.getAll.mockResolvedValue(events);
-      mockEventProcessorInstance.getNewEvents.mockReturnValue(events);
       
       // Both events fail
-      mockEventProcessorInstance.applyEventToCentral
+      mockEventProcessorInstance.processEvent
         .mockRejectedValueOnce(new Error('Processing failed'))
         .mockRejectedValueOnce(new Error('Another failure'));
 
@@ -152,7 +154,7 @@ describe('SyncWorker - Dead Letter Queue', () => {
       await syncWorker.syncOnce();
 
       // Should have processed both events
-      expect(mockEventProcessorInstance.applyEventToCentral).toHaveBeenCalledTimes(2);
+      expect(mockEventProcessorInstance.processEvent).toHaveBeenCalledTimes(2);
       
       // Should have recorded failures for both events
       expect(mockEventLogRepository.recordFailure).toHaveBeenCalledWith('event-1', 'Processing failed');
@@ -177,10 +179,9 @@ describe('SyncWorker - Dead Letter Queue', () => {
       ];
 
       mockEventLogRepository.getAll.mockResolvedValue(events);
-      mockEventProcessorInstance.getNewEvents.mockReturnValue(events);
       
       // All events fail
-      mockEventProcessorInstance.applyEventToCentral.mockRejectedValue(new Error('Processing failed'));
+      mockEventProcessorInstance.processEvent.mockRejectedValue(new Error('Processing failed'));
 
       mockEventLogRepository.recordFailure.mockResolvedValue(undefined);
       mockEventLogRepository.moveToDeadLetter.mockResolvedValue(undefined);
@@ -194,7 +195,7 @@ describe('SyncWorker - Dead Letter Queue', () => {
       await syncWorker.syncOnce();
 
       // Should have processed the event
-      expect(mockEventProcessorInstance.applyEventToCentral).toHaveBeenCalledTimes(1);
+      expect(mockEventProcessorInstance.processEvent).toHaveBeenCalledTimes(1);
       
       // Should have recorded failure
       expect(mockEventLogRepository.recordFailure).toHaveBeenCalledWith('event-1', 'Processing failed');
@@ -230,10 +231,9 @@ describe('SyncWorker - Dead Letter Queue', () => {
       ];
 
       mockEventLogRepository.getAll.mockResolvedValue(events);
-      mockEventProcessorInstance.getNewEvents.mockReturnValue(events);
       
       // First succeeds, second fails, third succeeds
-      mockEventProcessorInstance.applyEventToCentral
+      mockEventProcessorInstance.processEvent
         .mockResolvedValueOnce(undefined) // event-1 succeeds
         .mockRejectedValueOnce(new Error('Processing failed')) // event-2 fails
         .mockResolvedValueOnce(undefined); // event-3 succeeds
@@ -252,7 +252,7 @@ describe('SyncWorker - Dead Letter Queue', () => {
       await syncWorker.syncOnce();
 
       // Should have processed all events
-      expect(mockEventProcessorInstance.applyEventToCentral).toHaveBeenCalledTimes(3);
+      expect(mockEventProcessorInstance.processEvent).toHaveBeenCalledTimes(3);
       
       // Should have recorded failure for event-2
       expect(mockEventLogRepository.recordFailure).toHaveBeenCalledWith('event-2', 'Processing failed');

@@ -7,7 +7,9 @@ import { ConflictError } from '../../src/core/errors';
 vi.mock('../../src/core/logger', () => ({
   logger: {
     debug: vi.fn(),
+    info: vi.fn(),
     warn: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
@@ -18,6 +20,7 @@ describe('ifMatchMiddleware', () => {
 
   beforeEach(() => {
     mockRequest = {
+      id: 'test-request-id',
       headers: {},
     };
     mockResponse = {

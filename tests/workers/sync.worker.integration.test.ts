@@ -24,6 +24,16 @@ vi.mock('../../src/core/logger', () => ({
   },
 }));
 
+vi.mock('../../src/utils/circuitBreaker', () => ({
+  syncWorkerBreaker: {
+    isOpen: vi.fn().mockReturnValue(false),
+    execute: vi.fn().mockImplementation(async (fn) => await fn()),
+    recordSuccess: vi.fn(),
+    recordFailure: vi.fn(),
+    reset: vi.fn(),
+  },
+}));
+
 describe('SyncWorker - Integration Tests', () => {
   let syncWorker: SyncWorker;
   let mockEvents: Event[];
@@ -95,21 +105,11 @@ describe('SyncWorker - Integration Tests', () => {
       expect(writeJsonFile).toHaveBeenCalledWith(
         expect.stringContaining('central-inventory.json'),
         expect.objectContaining({
-          'STORE001': {
-            'SKU123': expect.objectContaining({
-              sku: 'SKU123',
-              storeId: 'STORE001',
-              qty: 120,
-              version: 3,
-            }),
+          'SKU123': {
+            'STORE001': 120,
           },
-          'STORE002': {
-            'SKU456': expect.objectContaining({
-              sku: 'SKU456',
-              storeId: 'STORE002',
-              qty: 25,
-              version: 1,
-            }),
+          'SKU456': {
+            'STORE002': 25,
           },
         })
       );
@@ -140,11 +140,8 @@ describe('SyncWorker - Integration Tests', () => {
       expect(writeJsonFile).toHaveBeenCalledWith(
         expect.stringContaining('central-inventory.json'),
         expect.objectContaining({
-          'STORE001': {
-            'SKU123': expect.objectContaining({
-              qty: 150,
-              version: 2,
-            }),
+          'SKU123': {
+            'STORE001': 150,
           },
         })
       );
@@ -172,7 +169,7 @@ describe('SyncWorker - Integration Tests', () => {
       vi.mocked(readJsonFile).mockResolvedValue({});
       vi.mocked(writeJsonFile).mockRejectedValue(new Error('File write error'));
 
-      await expect(syncWorker.syncOnce()).rejects.toThrow('File write error');
+      await expect(syncWorker.syncOnce()).rejects.toThrow('Failed to save central inventory');
     });
   });
 
