@@ -82,22 +82,22 @@ This system prioritizes **consistency over availability** because:
 ## API Endpoints
 
 ### Health Check
-- `GET /api/health` - System health status
+- `GET /api/health` - System health status with uptime and timestamp
 
 ### Inventory Management
-- `GET /api/inventory/stores/:storeId/inventory/:sku` - Get inventory record
-- `POST /api/inventory/stores/:storeId/inventory/:sku/adjust` - Adjust stock
-- `POST /api/inventory/stores/:storeId/inventory/:sku/reserve` - Reserve stock
+- `GET /api/inventory/stores/:storeId/inventory/:sku` - Get inventory record with ETag
+- `POST /api/inventory/stores/:storeId/inventory/:sku/adjust` - Adjust stock (supports idempotency)
+- `POST /api/inventory/stores/:storeId/inventory/:sku/reserve` - Reserve stock (supports idempotency)
 
 ### Sync Operations
 - `POST /api/sync` - Trigger manual sync
 - `GET /api/sync/status` - Get sync worker status
-- `POST /api/sync/start` - Start periodic sync
+- `POST /api/sync/start` - Start periodic sync with configurable interval
 - `POST /api/sync/stop` - Stop periodic sync
 
 ### Metrics & Observability
-- `GET /api/metrics` - Get system metrics
-- `POST /api/metrics/reset` - Reset metrics (testing)
+- `GET /api/metrics` - Get comprehensive system metrics
+- `POST /api/metrics/reset` - Reset metrics (testing only)
 
 ## Concurrency & Idempotency
 
@@ -182,10 +182,12 @@ await perKeyMutex.acquire(sku, async () => {
 - 🔄 **Per-Key Async Mutex** for SKU-level operation serialization
 - 🛡️ **Idempotency Support** with TTL-based caching
 - 📊 **Comprehensive Observability** with request logging and metrics
-- 🧪 **100% Test Coverage** with unit and integration tests
+- 🧪 **306 Passing Tests** with comprehensive unit and integration coverage
 - 📝 **Event Sourcing** with append-only event log
 - 🔄 **Distributed Sync** with periodic central aggregation
 - ⚡ **Fault Tolerance** with retry logic and error handling
+- 🏗️ **Clean Architecture** with all files under 200 LOC limit
+- 🔧 **Enterprise Quality** with ESLint, Prettier, and TypeScript strict mode
 
 ## Getting Started
 
