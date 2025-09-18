@@ -3,6 +3,8 @@ import { logger } from './core/logger';
 import { syncWorker } from './workers/sync.worker';
 // Bulkhead imports removed as they are not used in this file
 import { getBulkheadMetrics } from './utils/bulkhead';
+import { lockRegistry } from './utils/lockRegistry';
+import { forceReleaseLock } from './utils/lockFile';
 
 const PORT = process.env['PORT'] || 3000;
 const isApiOnly = process.argv.includes('--api-only');
@@ -52,6 +54,10 @@ async function gracefulShutdown(signal: string) {
       syncWorker.stopSync();
     }
 
+    // Release all active locks
+    logger.info('Releasing active locks...');
+    await releaseActiveLocks();
+
     // Drain bulkheads and wait for in-flight operations
     logger.info('Draining bulkheads...');
     await drainBulkheads();
@@ -77,6 +83,38 @@ async function gracefulShutdown(signal: string) {
     logger.error({ error }, 'Error during graceful shutdown');
     process.exit(1);
   }
+}
+
+/**
+ * Release all active locks during shutdown
+ */
+async function releaseActiveLocks(): Promise<void> {
+  const activeLocks = lockRegistry.getActiveLocks();
+  
+  if (activeLocks.length === 0) {
+    logger.info('No active locks to release');
+    return;
+  }
+
+  logger.info({ lockCount: activeLocks.length }, 'Releasing active locks');
+
+  // Release all locks in parallel, ignoring LOCK_LOST errors
+  const releasePromises = activeLocks.map(async (handle) => {
+    try {
+      await forceReleaseLock(handle.key);
+      logger.debug({ key: handle.key }, 'Lock forcefully released during shutdown');
+    } catch (error) {
+      // Ignore LOCK_LOST errors during shutdown
+      if (error instanceof Error && error.message.includes('LOCK_LOST')) {
+        logger.debug({ key: handle.key }, 'Lock already released or lost during shutdown');
+      } else {
+        logger.warn({ error, key: handle.key }, 'Failed to forcefully release lock during shutdown');
+      }
+    }
+  });
+
+  await Promise.allSettled(releasePromises);
+  logger.info('Active locks release completed');
 }
 
 /**

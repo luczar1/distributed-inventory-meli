@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { logger } from '../core/logger';
-import { DomainError, ErrorFactory } from '../core/errors';
+import { DomainError, ErrorFactory, LockRejectionError } from '../core/errors';
 import { z } from 'zod';
 
 interface ErrorWithCode {
@@ -13,6 +13,23 @@ interface ErrorWithCode {
 
 export const errorHandler = (error: Error, req: Request, res: Response) => {
   logger.error({ error, req: { id: req.id, method: req.method, url: req.url } }, 'Request error');
+
+  // Handle lock rejection errors with special headers
+  if (error instanceof LockRejectionError) {
+    res.set('Retry-After', error.retryAfter.toString());
+    res.set('X-Lock-Key', error.sku);
+    return res.status(503).json({
+      success: false,
+      error: {
+        name: error.name,
+        message: error.message,
+        code: 'LOCK_REJECTION_ERROR',
+        statusCode: 503,
+        timestamp: new Date().toISOString(),
+        details: { sku: error.sku, retryAfter: error.retryAfter }
+      },
+    });
+  }
 
   if (error instanceof DomainError) {
     return res.status(error.statusCode).json(ErrorFactory.createErrorResponse(error));

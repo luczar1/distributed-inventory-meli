@@ -181,6 +181,18 @@ export class InsufficientStockError extends DomainError {
   }
 }
 
+export class LockRejectionError extends Error {
+  public readonly sku: string;
+  public readonly retryAfter: number;
+
+  constructor(sku: string, retryAfter: number, message: string) {
+    super(message);
+    this.name = 'LockRejectionError';
+    this.sku = sku;
+    this.retryAfter = retryAfter;
+  }
+}
+
 // Error factory for creating standardized error responses
 export class ErrorFactory {
   static createErrorResponse(error: DomainError) {

@@ -12,6 +12,12 @@ interface Metrics {
   loadSheddingRejections: number;
   fileSystemRetries: number;
   snapshotsCreated: number;
+  lockAcquired: number;
+  lockContended: number;
+  lockStolen: number;
+  lockExpired: number;
+  lockLost: number;
+  lockReleaseFailures: number;
 }
 
 class MetricsCollector {
@@ -28,6 +34,12 @@ class MetricsCollector {
     loadSheddingRejections: 0,
     fileSystemRetries: 0,
     snapshotsCreated: 0,
+    lockAcquired: 0,
+    lockContended: 0,
+    lockStolen: 0,
+    lockExpired: 0,
+    lockLost: 0,
+    lockReleaseFailures: 0,
   };
 
   // Increment a specific metric
@@ -55,6 +67,12 @@ class MetricsCollector {
       loadSheddingRejections: 0,
       fileSystemRetries: 0,
       snapshotsCreated: 0,
+      lockAcquired: 0,
+      lockContended: 0,
+      lockStolen: 0,
+      lockExpired: 0,
+      lockLost: 0,
+      lockReleaseFailures: 0,
     };
   }
 
@@ -80,3 +98,9 @@ export const incrementRateLimitHits = () => metrics.increment('rateLimitHits');
 export const incrementLoadSheddingRejections = () => metrics.increment('loadSheddingRejections');
 export const incrementFileSystemRetries = () => metrics.increment('fileSystemRetries');
 export const incrementSnapshotsCreated = () => metrics.increment('snapshotsCreated');
+export const incrementLockAcquired = () => metrics.increment('lockAcquired');
+export const incrementLockContended = () => metrics.increment('lockContended');
+export const incrementLockStolen = () => metrics.increment('lockStolen');
+export const incrementLockExpired = () => metrics.increment('lockExpired');
+export const incrementLockLost = () => metrics.increment('lockLost');
+export const incrementLockReleaseFailures = () => metrics.increment('lockReleaseFailures');

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { SKU, StoreId, Version } from '../core/types';
-import { ConflictError, InsufficientStockError } from '../core/errors';
+import { ConflictError, InsufficientStockError, LockRejectionError } from '../core/errors';
 import { inventoryRepository } from '../repositories/inventory.repo';
 import { eventLogRepository, Event } from '../repositories/eventlog.repo';
 import { perKeyMutex } from '../utils/perKeyMutex';
@@ -41,7 +41,7 @@ export class StockAdjustmentService {
         logger.debug({ sku, storeId, lockOwner: config.LOCK_OWNER_ID }, 'Lock acquired for stock adjustment');
       } catch (error) {
         logger.warn({ sku, storeId, error }, 'Failed to acquire lock for stock adjustment');
-        throw new Error(`Lock acquisition failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new LockRejectionError(sku, config.LOCK_RETRY_AFTER_MS / 1000, `Lock acquisition failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 

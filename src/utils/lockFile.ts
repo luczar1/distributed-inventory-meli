@@ -2,6 +2,15 @@ import { writeFile, readFile, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { config } from '../core/config';
 import { logger } from '../core/logger';
+import { 
+  incrementLockAcquired, 
+  incrementLockContended, 
+  incrementLockStolen, 
+  incrementLockExpired, 
+  incrementLockLost, 
+  incrementLockReleaseFailures 
+} from './metrics';
+import { lockRegistry } from './lockRegistry';
 
 export type LockHandle = { 
   key: string; 
@@ -99,6 +108,7 @@ async function handleLockContention(filePath: string, key: string, payload: Lock
   
   // Lock is still valid
   logger.debug({ key, existingOwner: existingPayload.owner, expiresAt: existingPayload.expiresAt }, 'Lock is held by another process');
+  incrementLockContended();
   throw new Error(`Lock is held by another process`);
 }
 
@@ -111,12 +121,19 @@ async function handleMalformedLock(filePath: string, key: string, payload: LockP
     // Retry exclusive create
     await writeLockFile(filePath, payload);
     logger.debug({ key, owner: payload.owner, expiresAt: payload.expiresAt }, 'Lock acquired after removing malformed file');
-    return {
+    incrementLockAcquired();
+    
+    const handle = {
       key,
       file: filePath,
       owner: payload.owner,
       expiresAt: payload.expiresAt
     };
+    
+    // Register the lock for tracking
+    lockRegistry.register(handle);
+    
+    return handle;
   } catch (retryError) {
     // Race condition: another process acquired the lock
     logger.debug({ key, error: retryError }, 'Failed to acquire lock after removing malformed file due to race condition');
@@ -133,12 +150,20 @@ async function handleExpiredLock(filePath: string, key: string, payload: LockPay
     // Retry exclusive create
     await writeLockFile(filePath, payload);
     logger.debug({ key, owner: payload.owner, expiresAt: payload.expiresAt }, 'Lock stolen from expired holder');
-    return {
+    incrementLockStolen();
+    incrementLockExpired();
+    
+    const handle = {
       key,
       file: filePath,
       owner: payload.owner,
       expiresAt: payload.expiresAt
     };
+    
+    // Register the lock for tracking
+    lockRegistry.register(handle);
+    
+    return handle;
   } catch (stealError) {
     // Race condition: another process stole the lock
     logger.debug({ key, error: stealError }, 'Failed to steal expired lock due to race condition');
@@ -158,12 +183,19 @@ export async function acquireLock(key: string, ttlMs: number, owner: string): Pr
     // Try to create lock file exclusively
     await writeLockFile(filePath, payload);
     logger.debug({ key, owner, expiresAt: payload.expiresAt }, 'Lock acquired');
-    return {
+    incrementLockAcquired();
+    
+    const handle = {
       key,
       file: filePath,
       owner,
       expiresAt: payload.expiresAt
     };
+    
+    // Register the lock for tracking
+    lockRegistry.register(handle);
+    
+    return handle;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
       // Lock file exists, handle contention
@@ -184,6 +216,7 @@ export async function renewLock(handle: LockHandle, ttlMs: number): Promise<Lock
   }
   
   if (payload.owner !== handle.owner) {
+    incrementLockLost();
     throw new LockLostError('Lock owner mismatch - lock was stolen');
   }
   
@@ -217,14 +250,19 @@ export async function releaseLock(handle: LockHandle): Promise<void> {
   }
   
   if (payload.owner !== handle.owner) {
+    incrementLockLost();
     throw new LockLostError('Lock owner mismatch - cannot release lock owned by another process');
   }
   
   try {
     await rm(handle.file, { force: true });
     logger.debug({ key: handle.key, owner: handle.owner }, 'Lock released');
+    
+    // Unregister the lock from tracking
+    lockRegistry.unregister(handle);
   } catch (error) {
     logger.error({ error, key: handle.key }, 'Failed to release lock');
+    incrementLockReleaseFailures();
     throw new LockLostError('Failed to release lock');
   }
 }
@@ -258,12 +296,17 @@ export async function isLocked(key: string): Promise<boolean> {
  * Force release a lock (for shutdown scenarios)
  * This bypasses owner verification
  */
-export async function forceReleaseLock(handle: LockHandle): Promise<void> {
+export async function forceReleaseLock(key: string): Promise<void> {
+  const filePath = getLockFilePath(key);
   try {
-    await rm(handle.file, { force: true });
-    logger.debug({ key: handle.key }, 'Lock force released');
+    await rm(filePath, { force: true });
+    logger.debug({ key }, 'Lock force released');
   } catch (error) {
-    logger.error({ error, key: handle.key }, 'Failed to force release lock');
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      logger.debug({ key }, 'Lock file not found during force release');
+      return; // File doesn't exist, consider it released
+    }
+    logger.error({ error, key }, 'Failed to force release lock');
     throw new Error('Failed to force release lock');
   }
 }
