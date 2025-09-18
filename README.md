@@ -113,6 +113,29 @@ await perKeyMutex.acquire(sku, async () => {
 });
 ```
 
+### Optional File-Based Locking (Feature Flag)
+When `LOCKS_ENABLED=true`, the system uses file-based locks to complement the in-process mutex:
+
+```typescript
+// Lock acquisition before mutation
+if (config.LOCKS_ENABLED) {
+  const lockHandle = await acquireLock(sku, config.LOCK_TTL_MS, config.LOCK_OWNER_ID);
+  // Lock automatically released in finally block
+}
+```
+
+**Lock Strategy:**
+- **Primary**: Per-key in-process mutex (always active)
+- **Secondary**: File-based lease locks (optional, feature-flagged)
+- **Fallback**: Fast fail with `Retry-After` header on lock contention
+- **Steal on Expiry**: Expired locks are automatically stolen by new operations
+
+**Benefits:**
+- **Cross-process coordination**: File locks work across multiple server instances
+- **Fault tolerance**: Locks expire automatically, preventing deadlocks
+- **Graceful degradation**: System falls back to in-process mutex if file locks fail
+- **Client guidance**: `Retry-After` header tells clients when to retry
+
 ### Optimistic Concurrency Control
 - Each inventory record has a `version` field
 - Operations include `expectedVersion` parameter

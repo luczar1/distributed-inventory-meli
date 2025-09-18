@@ -602,6 +602,113 @@ LOG_LEVEL=debug npm run dev
 LOG_LEVEL=trace npm run dev
 ```
 
+## Lock System Configuration
+
+### **Enable File-Based Locking**
+
+The system supports optional file-based locking for cross-process coordination:
+
+```bash
+# Enable file-based locking
+LOCKS_ENABLED=true npm run dev
+
+# Custom lock configuration
+LOCKS_ENABLED=true \
+LOCK_TTL_MS=5000 \
+LOCK_RENEW_MS=2000 \
+LOCK_DIR=/tmp/locks \
+LOCK_RETRY_AFTER_MS=500 \
+npm run dev
+```
+
+### **Lock System Testing**
+
+#### Test Lock Contention
+```bash
+# Terminal 1: Start server with locks enabled
+LOCKS_ENABLED=true npm run dev
+
+# Terminal 2: Simulate concurrent operations on same SKU
+for i in {1..10}; do
+  curl -X POST http://localhost:3000/api/stores/store-1/inventory/SKU-001/adjust \
+    -H "Content-Type: application/json" \
+    -H "Idempotency-Key: test-$i" \
+    -d '{"delta": 1}' &
+done
+wait
+```
+
+#### Expected Lock Contention Response
+```bash
+# Some requests will succeed (200)
+HTTP/1.1 200 OK
+Content-Type: application/json
+{
+  "success": true,
+  "data": {
+    "qty": 15,
+    "version": 3
+  }
+}
+
+# Others will be rejected with lock contention (503)
+HTTP/1.1 503 Service Unavailable
+Retry-After: 0.3
+X-Lock-Key: SKU-001
+Content-Type: application/json
+{
+  "success": false,
+  "error": {
+    "name": "LockRejectionError",
+    "message": "Lock acquisition failed: Lock is held by another process",
+    "code": "LOCK_REJECTION_ERROR",
+    "statusCode": 503,
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "details": {
+      "sku": "SKU-001",
+      "retryAfter": 0.3
+    }
+  }
+}
+```
+
+#### Test Lock Metrics
+```bash
+# Check lock metrics
+curl http://localhost:3000/api/metrics | jq '.lockAcquired, .lockContended, .lockStolen, .lockExpired, .lockLost, .lockReleaseFailures'
+```
+
+#### Test Graceful Shutdown with Locks
+```bash
+# Start server with locks
+LOCKS_ENABLED=true npm run dev
+
+# In another terminal, trigger shutdown
+kill -TERM $(pgrep -f "npm run dev")
+
+# Check that lock files are cleaned up
+ls -la data/locks/  # Should be empty or contain only expired locks
+```
+
+### **Lock System Environment Variables**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOCKS_ENABLED` | `false` | Enable file-based locking |
+| `LOCK_TTL_MS` | `2000` | Lock time-to-live in milliseconds |
+| `LOCK_RENEW_MS` | `1000` | Lock renewal threshold in milliseconds |
+| `LOCK_DIR` | `data/locks` | Directory for lock files |
+| `LOCK_REJECT_STATUS` | `503` | HTTP status for lock rejection |
+| `LOCK_RETRY_AFTER_MS` | `300` | Retry-After header value in milliseconds |
+
+### **Lock System Benefits**
+
+- **Cross-Process Coordination**: File locks work across multiple server instances
+- **Fault Tolerance**: Locks expire automatically, preventing deadlocks
+- **Graceful Degradation**: System falls back to in-process mutex if file locks fail
+- **Client Guidance**: `Retry-After` header tells clients when to retry
+- **Observability**: Comprehensive metrics for lock operations
+
 ## Quality Assurance
 
 ### **Test Results**

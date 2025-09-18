@@ -303,6 +303,133 @@ This system prioritizes **consistency over availability** following the CAP theo
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Locking Strategy: Per-Key In-Process Mutex + File Lease (Optional)
+
+### **Dual-Layer Locking Architecture**
+
+The system implements a **two-layer locking strategy** for maximum concurrency control:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Locking Strategy Flow                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────┐  │
+│  │   Client        │    │   Store         │    │   File      │  │
+│  │   Request       │    │   Service       │    │   System    │  │
+│  └─────────────────┘    └─────────────────┘    └─────────────┘  │
+│           │                       │                       │      │
+│           │ 1. Request            │                       │      │
+│           ├──────────────────────►│                       │      │
+│           │                       │                       │      │
+│           │                       │ 2. Check LOCKS_ENABLED│      │
+│           │                       ├──────────────────────►│      │
+│           │                       │                       │      │
+│           │                       │ 3. Acquire File Lock  │      │
+│           │                       ├──────────────────────►│      │
+│           │                       │                       │      │
+│           │                       │ 4. Acquire Mutex     │      │
+│           │                       ├──────────────────────►│      │
+│           │                       │                       │      │
+│           │                       │ 5. Check Version      │      │
+│           │                       ├──────────────────────►│      │
+│           │                       │                       │      │
+│           │                       │ 6. Mutate State      │      │
+│           │                       ├──────────────────────►│      │
+│           │                       │                       │      │
+│           │                       │ 7. Release Mutex      │      │
+│           │                       ├──────────────────────►│      │
+│           │                       │                       │      │
+│           │                       │ 8. Release File Lock │      │
+│           │                       ├──────────────────────►│      │
+│           │                       │                       │      │
+│           │ 9. Response           │                       │      │
+│           │◄──────────────────────┤                       │      │
+│           │                       │                       │      │
+│  └─────────────────┘    └─────────────────┘    └─────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Lock Acquisition Sequence**
+
+1. **File Lock Acquisition** (if `LOCKS_ENABLED=true`)
+   - Atomic file creation with exclusive flag (`wx`)
+   - TTL-based expiration for deadlock prevention
+   - Steal expired locks automatically
+
+2. **Per-Key Mutex Acquisition**
+   - In-process serialization for same SKU
+   - Prevents race conditions within same process
+   - Always active regardless of file lock status
+
+3. **Version Check & Mutation**
+   - Optimistic concurrency control
+   - Version mismatch → `ConflictError` (409)
+   - Successful operations increment version
+
+4. **Lock Release Sequence**
+   - Release mutex first
+   - Release file lock second
+   - Automatic cleanup in `finally` blocks
+
+### **Steal on Expiry Flow**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Lock Steal on Expiry                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Process A: Lock expires (TTL reached)                         │
+│  ┌─────────────────┐                                           │
+│  │ Lock File:      │                                           │
+│  │ {               │                                           │
+│  │   "owner": "A", │                                           │
+│  │   "expiresAt":  │ ← EXPIRED                                 │
+│  │   1234567890    │                                           │
+│  │ }               │                                           │
+│  └─────────────────┘                                           │
+│           │                                                     │
+│           │ Process B: Attempts to acquire                     │
+│           │ ┌─────────────────┐                               │
+│           │ │ 1. Read file     │                               │
+│           │ │ 2. Check expiry  │                               │
+│           │ │ 3. Remove file   │                               │
+│           │ │ 4. Create new    │                               │
+│           │ │    lock file     │                               │
+│           │ └─────────────────┘                               │
+│           │                                                     │
+│  ┌─────────────────┐                                           │
+│  │ Lock File:      │                                           │
+│  │ {               │                                           │
+│  │   "owner": "B", │                                           │
+│  │   "expiresAt":  │ ← NEW LOCK                               │
+│  │   1234567890    │                                           │
+│  │ }               │                                           │
+│  └─────────────────┘                                           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Fallback Strategy**
+
+When file locks are unavailable or fail:
+
+1. **Fast Fail**: Return `503 Service Unavailable` with `Retry-After` header
+2. **Client Guidance**: `X-Lock-Key` header indicates which SKU is locked
+3. **Graceful Degradation**: System continues with in-process mutex only
+4. **Automatic Recovery**: Expired locks are automatically cleaned up
+
+### **Configuration**
+
+```typescript
+// Lock system configuration
+LOCKS_ENABLED: boolean          // Enable/disable file locks
+LOCK_TTL_MS: number            // Lock time-to-live (default: 2000ms)
+LOCK_RENEW_MS: number          // Renewal threshold (default: 1000ms)
+LOCK_DIR: string               // Lock file directory
+LOCK_REJECT_STATUS: number     // HTTP status on lock failure (default: 503)
+LOCK_RETRY_AFTER_MS: number    // Retry-After header value (default: 300ms)
+```
+
 ## Data Flow
 
 ### 1. Store Service Operations
