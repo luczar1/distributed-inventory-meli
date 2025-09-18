@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 // In-memory idempotency key storage with TTL
 interface IdempotencyEntry<T = unknown> {
   result: T;
@@ -23,23 +25,21 @@ export class IdempotencyStore {
    * Compute hash for payload to detect semantic equality
    */
   private computeHash(payload: unknown): string {
-    const crypto = require('crypto');
-    
     // Handle null, undefined, and non-objects
     if (payload === null) {
-      return crypto.createHash('sha256').update('null').digest('hex');
+      return createHash('sha256').update('null').digest('hex');
     }
-    
+
     if (payload === undefined) {
-      return crypto.createHash('sha256').update('undefined').digest('hex');
+      return createHash('sha256').update('undefined').digest('hex');
     }
-    
+
     if (typeof payload !== 'object') {
-      return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+      return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
     }
-    
+
     const payloadStr = JSON.stringify(payload, Object.keys(payload).sort());
-    return crypto.createHash('sha256').update(payloadStr).digest('hex');
+    return createHash('sha256').update(payloadStr).digest('hex');
   }
 
   async get<T>(key: string): Promise<T | null> {

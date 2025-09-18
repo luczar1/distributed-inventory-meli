@@ -129,7 +129,7 @@ export class CentralInventoryManager {
         skusByStore: {} as Record<string, number>,
       };
 
-      for (const [sku, stores] of Object.entries(inventory)) {
+      for (const [, stores] of Object.entries(inventory)) {
         for (const [storeId, quantity] of Object.entries(stores)) {
           stats.totalStores = Math.max(stats.totalStores, Object.keys(stores).length);
           stats.totalQuantity += quantity;

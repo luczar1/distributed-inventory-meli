@@ -3,6 +3,14 @@ import { logger } from '../core/logger';
 import { DomainError, ErrorFactory } from '../core/errors';
 import { z } from 'zod';
 
+interface ErrorWithCode {
+  code: string;
+  statusCode: number;
+  name: string;
+  timestamp?: string;
+  details?: unknown;
+}
+
 export const errorHandler = (error: Error, req: Request, res: Response) => {
   logger.error({ error, req: { id: req.id, method: req.method, url: req.url } }, 'Request error');
 
@@ -33,15 +41,16 @@ export const errorHandler = (error: Error, req: Request, res: Response) => {
 
   // Handle custom validation errors from middleware
   if ('code' in error && 'statusCode' in error) {
-    return res.status((error as any).statusCode).json({
+    const errorWithCode = error as Error & ErrorWithCode;
+    return res.status(errorWithCode.statusCode).json({
       success: false,
       error: {
-        name: (error as any).name,
+        name: errorWithCode.name,
         message: error.message,
-        code: (error as any).code,
-        statusCode: (error as any).statusCode,
-        timestamp: (error as any).timestamp,
-        details: (error as any).details,
+        code: errorWithCode.code,
+        statusCode: errorWithCode.statusCode,
+        timestamp: errorWithCode.timestamp,
+        details: errorWithCode.details,
       },
     });
   }

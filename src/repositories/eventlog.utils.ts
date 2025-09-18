@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { readJsonFile, writeJsonFile, ensureDir } from '../utils/fsSafe';
 import { logger } from '../core/logger';
-import { Event, EventLogData } from './eventlog.types';
+import { EventLogData } from './eventlog.types';
 
 export class EventLogUtils {
   private readonly dataDir = 'data';
