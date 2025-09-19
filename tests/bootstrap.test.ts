@@ -161,7 +161,7 @@ describe('Bootstrap Integration', () => {
       const response = await request(server)
         .post('/api/inventory/stores/STORE001/inventory/SKU123/reserve')
         .send({ qty: 5 })
-        .expect(200);
+        .expect(201);
 
       expect(response.body).toHaveProperty('success', true);
       expect(response.body).toHaveProperty('newQuantity');

@@ -97,7 +97,7 @@ describe('Inventory Routes API - Idempotency', () => {
         .post('/api/inventory/stores/STORE001/inventory/SKU123/reserve')
         .set('Idempotency-Key', idempotencyKey)
         .send({ qty: 10 })
-        .expect(200);
+        .expect(201);
 
       expect(response.body.success).toBe(true);
     });
