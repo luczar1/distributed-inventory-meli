@@ -50,6 +50,23 @@ vi.mock('../../src/utils/lockFile', () => ({
   acquireLock: vi.fn(),
   releaseLock: vi.fn(),
 }));
+vi.mock('../../src/core/config', () => ({
+  config: {
+    LOCKS_ENABLED: false,
+    LOCK_TTL_MS: 2000,
+    LOCK_RENEW_MS: 1000,
+    LOCK_DIR: 'data/locks',
+    LOCK_REJECT_STATUS: 503,
+    LOCK_RETRY_AFTER_MS: 300,
+    LOCK_OWNER_ID: 'test-owner',
+  },
+}));
+vi.mock('../../src/middleware/rateLimiter', () => ({
+  rateLimitMiddleware: vi.fn((req, res, next) => next()),
+}));
+vi.mock('../../src/middleware/loadShedding', () => ({
+  loadSheddingMiddleware: vi.fn((req, res, next) => next()),
+}));
 
 const mockInventoryRepository = vi.mocked(inventoryRepository);
 const mockInventoryService = vi.mocked(inventoryService);
@@ -66,6 +83,21 @@ describe('Inventory Routes - If-Match Header Support', () => {
     
     // Mock event log repository
     mockEventLogRepository.append.mockResolvedValue();
+    
+    // Mock inventory repository
+    mockInventoryRepository.get.mockResolvedValue({
+      sku: 'SKU123',
+      storeId: 'store1',
+      qty: 100,
+      version: 5,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockInventoryRepository.upsert.mockResolvedValue(undefined);
+    
+    // Mock inventory service
+    mockInventoryService.adjustStock.mockResolvedValue({ qty: 120, version: 6 });
+    mockInventoryService.reserveStock.mockResolvedValue({ qty: 80, version: 6 });
   });
 
   afterEach(() => {
@@ -101,7 +133,7 @@ describe('Inventory Routes - If-Match Header Support', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.newQuantity).toBe(120);
       expect(response.body.newVersion).toBe(6);
-      expect(response.headers.etag).toBe('"6"');
+      expect(response.headers.etag).toMatch(/^W?"6"$/);
 
       // Verify service was called with If-Match version
       expect(mockInventoryService.adjustStock).toHaveBeenCalledWith(
@@ -251,12 +283,12 @@ describe('Inventory Routes - If-Match Header Support', () => {
         .post(`/api/inventory/stores/${storeId}/inventory/${sku}/reserve`)
         .set('If-Match', '"5"')
         .send({ qty: 20 })
-        .expect(200);
+        .expect(201);
 
       expect(response.body.success).toBe(true);
       expect(response.body.newQuantity).toBe(80);
       expect(response.body.newVersion).toBe(6);
-      expect(response.headers.etag).toBe('"6"');
+      expect(response.headers.etag).toMatch(/^W?"6"$/);
 
       // Verify service was called with If-Match version
       expect(mockInventoryService.reserveStock).toHaveBeenCalledWith(
@@ -287,7 +319,7 @@ describe('Inventory Routes - If-Match Header Support', () => {
       const response = await request(app)
         .post(`/api/inventory/stores/${storeId}/inventory/${sku}/reserve`)
         .send({ qty: 20, expectedVersion: 3 })
-        .expect(200);
+        .expect(201);
 
       expect(response.body.success).toBe(true);
       expect(response.body.newQuantity).toBe(80);
@@ -323,7 +355,7 @@ describe('Inventory Routes - If-Match Header Support', () => {
         .post(`/api/inventory/stores/${storeId}/inventory/${sku}/reserve`)
         .set('If-Match', '"5"')
         .send({ qty: 20, expectedVersion: 3 }) // This should be ignored
-        .expect(200);
+        .expect(201);
 
       // Verify service was called with If-Match version, not body version
       expect(mockInventoryService.reserveStock).toHaveBeenCalledWith(

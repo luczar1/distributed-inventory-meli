@@ -58,8 +58,22 @@ describe('Graceful shutdown integration test', () => {
       serverError += data.toString();
     });
 
-    // Wait for server to start
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait for server to start by checking for startup message
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Server startup timeout'));
+      }, 10000); // 10 second timeout
+      
+      const checkStartup = () => {
+        if (serverOutput.includes('Server running on port')) {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          setTimeout(checkStartup, 100);
+        }
+      };
+      checkStartup();
+    });
 
     // Make some requests to create in-flight operations
     const requests = Array(5).fill(0).map(async (_, i) => {
@@ -124,8 +138,22 @@ describe('Graceful shutdown integration test', () => {
       serverOutput += data.toString();
     });
 
-    // Wait for server to start
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait for server to start by checking for startup message
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Server startup timeout'));
+      }, 10000); // 10 second timeout
+      
+      const checkStartup = () => {
+        if (serverOutput.includes('Server running on port')) {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          setTimeout(checkStartup, 100);
+        }
+      };
+      checkStartup();
+    });
 
     // Send SIGINT
     serverProcess.kill('SIGINT');
@@ -151,8 +179,22 @@ describe('Graceful shutdown integration test', () => {
       env: { ...process.env, PORT: '3003' },
     });
 
-    // Wait for server to start
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait for server to start by checking for startup message
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Server startup timeout'));
+      }, 10000); // 10 second timeout
+      
+      const checkStartup = () => {
+        if (serverOutput.includes('Server running on port')) {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          setTimeout(checkStartup, 100);
+        }
+      };
+      checkStartup();
+    });
 
     // Make some requests to create state changes
     try {
@@ -215,8 +257,22 @@ describe('Graceful shutdown integration test', () => {
       serverOutput += data.toString();
     });
 
-    // Wait for server to start
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait for server to start by checking for startup message
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Server startup timeout'));
+      }, 10000); // 10 second timeout
+      
+      const checkStartup = () => {
+        if (serverOutput.includes('Server running on port')) {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          setTimeout(checkStartup, 100);
+        }
+      };
+      checkStartup();
+    });
 
     // Send SIGTERM
     serverProcess.kill('SIGTERM');

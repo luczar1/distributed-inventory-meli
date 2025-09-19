@@ -170,6 +170,8 @@ router.post('/stores/:storeId/inventory/:sku/adjust',
         },
       };
 
+      // Set ETag header with version
+      res.set('ETag', `"${result.version}"`);
       res.json(response);
     } catch (error) {
       next(error);
@@ -223,6 +225,8 @@ router.post('/stores/:storeId/inventory/:sku/reserve',
         },
       };
 
+      // Set ETag header with version
+      res.set('ETag', `"${result.version}"`);
       res.status(201).json(response);
     } catch (error) {
       next(error);
