@@ -4,13 +4,13 @@ import { logger } from '../core/logger';
 import { Event, DeadLetterEvent } from './eventlog.types';
 
 export class DeadLetterQueue {
-  private readonly dataDir: string;
-  private readonly filePath: string;
-
-  constructor() {
+  private get dataDir(): string {
     // Use test data directory if in test environment
-    this.dataDir = process.env.TEST_DATA_DIR || 'data';
-    this.filePath = join(this.dataDir, 'dead-letter.json');
+    return process.env.TEST_DATA_DIR || 'data';
+  }
+
+  private get filePath(): string {
+    return join(this.dataDir, 'dead-letter.json');
   }
 
   /**

@@ -12,7 +12,11 @@ export function setupTestIsolation() {
   beforeEach(async (context) => {
     // Create isolated data directory for each test
     const testName = context.task.name || 'unknown-test';
+    console.log(`Setting up test isolation for: ${testName}`);
     testDataDir = await TestIsolation.setupTestData(testName);
+    console.log(`Test data directory: ${testDataDir}`);
+    console.log(`TEST_DATA_DIR env var: ${process.env.TEST_DATA_DIR}`);
+    console.log(`Environment variables:`, Object.keys(process.env).filter(key => key.includes('TEST')));
   });
 
   afterEach(async () => {
@@ -63,4 +67,6 @@ export function getTestDataDir(): string | null {
 }
 
 // Auto-setup for all tests
+console.log('Loading test setup file...');
 setupTestIsolation();
+console.log('Test setup file loaded');

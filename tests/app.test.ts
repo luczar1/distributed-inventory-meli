@@ -3,6 +3,7 @@ import request from 'supertest';
 import { app } from '../src/app';
 
 describe('App', () => {
+
   describe('Health endpoint', () => {
     it('should respond to health check', async () => {
       const response = await request(app)

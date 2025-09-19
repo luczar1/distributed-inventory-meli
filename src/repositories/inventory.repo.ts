@@ -15,13 +15,13 @@ interface InventoryData {
 }
 
 export class InventoryRepository {
-  private readonly dataDir: string;
-  private readonly filePath: string;
-
-  constructor() {
+  private get dataDir(): string {
     // Use test data directory if in test environment
-    this.dataDir = process.env.TEST_DATA_DIR || 'data';
-    this.filePath = join(this.dataDir, 'store-inventory.json');
+    return process.env.TEST_DATA_DIR || 'data';
+  }
+
+  private get filePath(): string {
+    return join(this.dataDir, 'store-inventory.json');
   }
 
   /**

@@ -14,15 +14,16 @@ export interface Snapshot {
 }
 
 export class Snapshotter {
-  private readonly dataDir: string;
-  private readonly snapshotsDir: string;
-  private eventProcessor = new EventProcessor();
-
-  constructor() {
+  private get dataDir(): string {
     // Use test data directory if in test environment
-    this.dataDir = process.env.TEST_DATA_DIR || 'data';
-    this.snapshotsDir = join(this.dataDir, 'snapshots');
+    return process.env.TEST_DATA_DIR || 'data';
   }
+
+  private get snapshotsDir(): string {
+    return join(this.dataDir, 'snapshots');
+  }
+
+  private eventProcessor = new EventProcessor();
 
   /**
    * Create a snapshot if the event count threshold is reached
