@@ -4,10 +4,12 @@ import { logger } from '../core/logger';
 import { CentralInventory } from './sync.worker.types';
 
 export class CentralInventoryManager {
-  private readonly dataDir = 'data';
+  private readonly dataDir: string;
   private readonly centralInventoryPath: string;
 
   constructor() {
+    // Use test data directory if in test environment
+    this.dataDir = process.env.TEST_DATA_DIR || 'data';
     this.centralInventoryPath = join(this.dataDir, 'central-inventory.json');
   }
 

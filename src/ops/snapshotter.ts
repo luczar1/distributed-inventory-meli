@@ -14,11 +14,13 @@ export interface Snapshot {
 }
 
 export class Snapshotter {
-  private readonly dataDir = 'data';
+  private readonly dataDir: string;
   private readonly snapshotsDir: string;
   private eventProcessor = new EventProcessor();
 
   constructor() {
+    // Use test data directory if in test environment
+    this.dataDir = process.env.TEST_DATA_DIR || 'data';
     this.snapshotsDir = join(this.dataDir, 'snapshots');
   }
 

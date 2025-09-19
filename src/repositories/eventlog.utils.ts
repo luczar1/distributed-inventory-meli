@@ -4,10 +4,12 @@ import { logger } from '../core/logger';
 import { EventLogData } from './eventlog.types';
 
 export class EventLogUtils {
-  private readonly dataDir = 'data';
+  private readonly dataDir: string;
   private readonly filePath: string;
 
   constructor() {
+    // Use test data directory if in test environment
+    this.dataDir = process.env.TEST_DATA_DIR || 'data';
     this.filePath = join(this.dataDir, 'event-log.json');
   }
 

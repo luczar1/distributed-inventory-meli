@@ -179,6 +179,17 @@ describe('Graceful shutdown integration test', () => {
       env: { ...process.env, PORT: '3003' },
     });
 
+    let serverOutput = '';
+    let serverError = '';
+
+    serverProcess.stdout?.on('data', (data) => {
+      serverOutput += data.toString();
+    });
+
+    serverProcess.stderr?.on('data', (data) => {
+      serverError += data.toString();
+    });
+
     // Wait for server to start by checking for startup message
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {

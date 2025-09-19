@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { ResilienceConfig } from './config.types';
 import { 
   parsePositiveInt, 
@@ -42,7 +43,7 @@ export const config: ResilienceConfig = Object.freeze({
   LOCKS_ENABLED: process.env.LOCKS_ENABLED === 'true',
   LOCK_TTL_MS: parsePositiveInt('LOCK_TTL_MS', 2000),
   LOCK_RENEW_MS: parsePositiveInt('LOCK_RENEW_MS', 1000),
-  LOCK_DIR: process.env.LOCK_DIR || 'data/locks',
+  LOCK_DIR: process.env.TEST_DATA_DIR ? join(process.env.TEST_DATA_DIR, 'locks') : (process.env.LOCK_DIR || 'data/locks'),
   LOCK_REJECT_STATUS: parsePositiveInt('LOCK_REJECT_STATUS', 503),
   LOCK_RETRY_AFTER_MS: parsePositiveInt('LOCK_RETRY_AFTER_MS', 300),
   LOCK_OWNER_ID: `${process.pid}-${randomUUID()}`,
