@@ -5,6 +5,7 @@ import { logger } from '../core/logger';
 import { config } from '../core/config';
 import { fileSystemBreaker } from './circuitBreaker';
 import { fileSystemBulkhead } from './bulkhead';
+import { random } from '../testing/rng';
 
 // Sleep utility
 function sleep(ms: number): Promise<void> {
@@ -14,7 +15,8 @@ function sleep(ms: number): Promise<void> {
 // Exponential backoff with jitter
 function getDelayWithJitter(attempt: number): number {
   const baseDelay = config.RETRY_BASE_MS * Math.pow(2, attempt - 1);
-  const jitter = Math.random() * 0.1 * baseDelay; // 10% jitter
+  const jitterMs = config.RETRY_JITTER_MS || 0;
+  const jitter = random() * jitterMs;
   return Math.floor(baseDelay + jitter);
 }
 

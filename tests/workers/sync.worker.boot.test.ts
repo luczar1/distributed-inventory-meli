@@ -175,7 +175,7 @@ describe('Sync Worker Boot Replay', () => {
 
       // Verify central inventory was updated
       expect(writeJsonFile).toHaveBeenCalledWith(
-        centralInventoryPath,
+        expect.stringContaining('central-inventory.json'),
         expect.objectContaining({
           'SKU123': expect.objectContaining({
             'STORE001': expect.objectContaining({
@@ -304,7 +304,7 @@ describe('Sync Worker Boot Replay', () => {
       // The final state should reflect all events applied in sequence order
       // Final qty should be 100 + 10 + 20 + 30 = 160
       expect(writeJsonFile).toHaveBeenCalledWith(
-        centralInventoryPath,
+        expect.stringContaining('central-inventory.json'),
         expect.objectContaining({
           'SKU123': expect.objectContaining({
             'STORE001': expect.objectContaining({

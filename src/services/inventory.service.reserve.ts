@@ -74,7 +74,7 @@ export class StockReservationService {
     qty: Quantity,
     expectedVersion: Version | undefined,
     idempotencyKey: string,
-    _lockHandle: LockHandle | null
+    _lockHandle?: LockHandle | null
   ): Promise<StockReservationResult> {
     
     try {

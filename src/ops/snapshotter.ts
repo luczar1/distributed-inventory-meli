@@ -44,6 +44,14 @@ export class Snapshotter {
       }
 
       const lastEvent = events[events.length - 1];
+      
+      // Check if snapshot already exists for this sequence (idempotent)
+      const existingSnapshot = await this.loadSnapshot(lastEvent.sequence);
+      if (existingSnapshot) {
+        logger.debug({ sequence: lastEvent.sequence }, 'Snapshot already exists, skipping creation');
+        return existingSnapshot;
+      }
+
       const snapshot: Snapshot = {
         sequence: lastEvent.sequence,
         timestamp: Date.now(),
@@ -51,7 +59,7 @@ export class Snapshotter {
         eventCount,
       };
 
-      // Save snapshot to file
+      // Save snapshot to file with atomic write
       const snapshotPath = join(this.snapshotsDir, `central-${lastEvent.sequence}.json`);
       await ensureDir(this.snapshotsDir);
       await writeJsonAtomic(snapshotPath, snapshot);
@@ -79,15 +87,10 @@ export class Snapshotter {
       // Get all events
       const allEvents = await eventLogRepository.getAll();
       
-      if (allEvents.length === 0) {
-        logger.info('No events to compact');
-        return;
-      }
-
       // Filter out events that are included in the snapshot
       const eventsToKeep = allEvents.filter(event => event.sequence > snapshotSequence);
       
-      if (eventsToKeep.length === allEvents.length) {
+      if (eventsToKeep.length === allEvents.length && allEvents.length > 0) {
         logger.info('No events to remove during compaction');
         return;
       }
@@ -164,10 +167,27 @@ export class Snapshotter {
    */
   private async listSnapshotFiles(): Promise<{ sequence: number; path: string }[]> {
     try {
-      // This is a simplified implementation
-      // In a real system, you'd use fs.readdir to list files
-      // For now, we'll return an empty array
-      return [];
+      const { promises: fs } = await import('fs');
+      const { join } = await import('path');
+      
+      await ensureDir(this.snapshotsDir);
+      
+      const files = await fs.readdir(this.snapshotsDir);
+      const snapshotFiles = files
+        .filter(file => file.startsWith('central-') && file.endsWith('.json'))
+        .map(file => {
+          const match = file.match(/central-(\d+)\.json/);
+          if (match) {
+            return {
+              sequence: parseInt(match[1], 10),
+              path: join(this.snapshotsDir, file)
+            };
+          }
+          return null;
+        })
+        .filter((file): file is { sequence: number; path: string } => file !== null);
+      
+      return snapshotFiles;
     } catch (error) {
       logger.error({ error }, 'Failed to list snapshot files');
       return [];

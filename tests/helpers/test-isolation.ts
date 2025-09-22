@@ -78,7 +78,7 @@ export class TestIsolation {
           } else if (file === 'central-inventory.json') {
             await writeFile(targetPath, '{}');
           } else if (file === 'event-log.json') {
-            await writeFile(targetPath, JSON.stringify({ events: [], lastSequence: 0 }));
+            await writeFile(targetPath, JSON.stringify({ events: [], lastId: undefined, lastSequence: undefined }));
           } else if (file === 'dead-letter.json') {
             await writeFile(targetPath, '[]');
           }
@@ -90,7 +90,7 @@ export class TestIsolation {
         } else if (file === 'central-inventory.json') {
           await writeFile(targetPath, '{}');
         } else if (file === 'event-log.json') {
-          await writeFile(targetPath, JSON.stringify({ events: [], lastSequence: 0 }));
+          await writeFile(targetPath, JSON.stringify({ events: [], lastId: undefined, lastSequence: undefined }));
         } else if (file === 'dead-letter.json') {
           await writeFile(targetPath, '[]');
         }

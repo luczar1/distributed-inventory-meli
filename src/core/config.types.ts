@@ -14,6 +14,7 @@ export interface ResilienceConfig {
   // Retry configuration
   RETRY_BASE_MS: number;
   RETRY_TIMES: number;
+  RETRY_JITTER_MS: number;
   
   // Snapshot configuration
   SNAPSHOT_EVERY_N_EVENTS: number;

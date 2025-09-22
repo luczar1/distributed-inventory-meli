@@ -5,6 +5,7 @@ import { snapshotter } from '../../src/ops/snapshotter';
 import { eventLogRepository } from '../../src/repositories/eventlog.repo';
 import { readJsonFile, writeJsonAtomic, ensureDir, deleteFile } from '../../src/utils/fsSafe';
 import { config } from '../../src/core/config';
+import { freezeNow, restoreNow } from '../../src/testing/time';
 
 // Mock dependencies
 vi.mock('../../src/repositories/eventlog.repo');
@@ -20,25 +21,28 @@ vi.mock('../../src/workers/sync.worker.events', () => ({
       // Simple mock implementation
       if (event.type === 'stock_adjusted') {
         const { sku, storeId, delta } = event.payload as any;
-        if (!inventory[storeId]) {
-          inventory[storeId] = {};
+        if (!inventory[sku]) {
+          inventory[sku] = {};
         }
-        if (!inventory[storeId][sku]) {
-          inventory[storeId][sku] = { qty: 0, version: 0 };
+        if (!inventory[sku][storeId]) {
+          inventory[sku][storeId] = { qty: 0, version: 0 };
         }
-        inventory[storeId][sku].qty += delta;
-        inventory[storeId][sku].version += 1;
+        inventory[sku][storeId].qty += delta;
+        inventory[sku][storeId].version += 1;
       }
     }),
   })),
 }));
 
 describe('Snapshotter', () => {
-  const dataDir = 'data';
+  const dataDir = process.env.TEST_DATA_DIR || 'data';
   const snapshotsDir = join(dataDir, 'snapshots');
   const eventLogPath = join(dataDir, 'event-log.json');
 
   beforeEach(async () => {
+    // Freeze time for deterministic tests
+    freezeNow('2025-01-01T00:00:00Z');
+    
     // Clean up test data
     try {
       await fs.rmdir(snapshotsDir, { recursive: true });
@@ -49,6 +53,9 @@ describe('Snapshotter', () => {
   });
 
   afterEach(async () => {
+    // Restore real timers
+    restoreNow();
+    
     // Clean up test data
     try {
       await fs.rmdir(snapshotsDir, { recursive: true });
@@ -85,7 +92,7 @@ describe('Snapshotter', () => {
 
       // Verify snapshot was saved
       expect(writeJsonAtomic).toHaveBeenCalledWith(
-        join(snapshotsDir, 'central-3.json'),
+        expect.stringContaining('snapshots/central-3.json'),
         expect.objectContaining({
           sequence: 3,
           centralInventory,
@@ -144,7 +151,7 @@ describe('Snapshotter', () => {
 
       // Verify compacted event log was saved
       expect(writeJsonAtomic).toHaveBeenCalledWith(
-        eventLogPath,
+        expect.stringContaining('event-log.json'),
         expect.objectContaining({
           events: [
             { id: 'event-4', type: 'stock_adjusted', payload: {}, ts: expect.any(Number), sequence: 4 },
@@ -157,6 +164,9 @@ describe('Snapshotter', () => {
     });
 
     it('should handle empty event log', async () => {
+      // Clear all mocks first to ensure clean state
+      vi.clearAllMocks();
+      
       // Mock event log repository
       const mockEventLogRepo = {
         getAll: vi.fn().mockResolvedValue([]),
@@ -170,7 +180,7 @@ describe('Snapshotter', () => {
 
       // Verify compacted event log was saved with empty events
       expect(writeJsonAtomic).toHaveBeenCalledWith(
-        eventLogPath,
+        expect.stringContaining('event-log.json'),
         expect.objectContaining({
           events: [],
           lastSequence: 3,
@@ -198,7 +208,7 @@ describe('Snapshotter', () => {
       const snapshot = await snapshotter.loadSnapshot(3);
 
       expect(snapshot).toEqual(snapshotData);
-      expect(readJsonFile).toHaveBeenCalledWith(join(snapshotsDir, 'central-3.json'));
+      expect(readJsonFile).toHaveBeenCalledWith(expect.stringContaining('snapshots/central-3.json'));
     });
 
     it('should return null if snapshot not found', async () => {
@@ -303,6 +313,9 @@ describe('Snapshotter', () => {
     });
 
     it('should not delete anything if count is below threshold', async () => {
+      // Clear all mocks first
+      vi.clearAllMocks();
+      
       // Mock listSnapshotFiles to return few snapshots
       const mockListSnapshotFiles = vi.fn().mockResolvedValue([
         { sequence: 1, path: join(snapshotsDir, 'central-1.json') },

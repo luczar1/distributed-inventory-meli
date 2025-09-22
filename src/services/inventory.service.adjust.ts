@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { SKU, StoreId, Version } from '../core/types';
-import { ConflictError, InsufficientStockError, LockRejectionError } from '../core/errors';
+import { ConflictError, InsufficientStockError, LockRejectionError, NotFoundError } from '../core/errors';
 import { inventoryRepository } from '../repositories/inventory.repo';
 import { eventLogRepository, Event } from '../repositories/eventlog.repo';
 import { perKeyMutex } from '../utils/perKeyMutex';
@@ -74,12 +74,29 @@ export class StockAdjustmentService {
     delta: number,
     expectedVersion: Version | undefined,
     idempotencyKey: string,
-    _lockHandle: LockHandle | null
+    _lockHandle?: LockHandle | null
   ): Promise<StockAdjustmentResult> {
     
     try {
-      // Get current record
-      const currentRecord = await inventoryRepository.get(sku, storeId);
+      // Get current record or create new one if it doesn't exist
+      let currentRecord: InventoryRecord;
+      try {
+        currentRecord = await inventoryRepository.get(sku, storeId);
+      } catch (error) {
+        if (error instanceof NotFoundError) {
+          // Create new record if it doesn't exist
+          currentRecord = {
+            sku,
+            storeId,
+            qty: 0,
+            version: 1,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        } else {
+          throw error;
+        }
+      }
       
       // Check version if expected version is provided
       if (expectedVersion !== undefined && currentRecord.version !== expectedVersion) {

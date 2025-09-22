@@ -23,6 +23,7 @@ export const config: ResilienceConfig = Object.freeze({
   // Retry configuration
   RETRY_BASE_MS: parsePositiveInt('RETRY_BASE_MS', 1000),
   RETRY_TIMES: parseNonNegativeInt('RETRY_TIMES', 3),
+  RETRY_JITTER_MS: parseNonNegativeInt('RETRY_JITTER_MS', 100),
   
   // Snapshot configuration
   SNAPSHOT_EVERY_N_EVENTS: parsePositiveInt('SNAPSHOT_EVERY_N_EVENTS', 100),
